@@ -1,0 +1,52 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+**/.streamlit/secrets.toml
+
+# Local databases and generated database files
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite3-journal
+**/data/*.db
+**/data/*.db-*
+**/data/*.sqlite
+**/data/*.sqlite3
+
+# Generated reports, previews and exports
+**/output/
+**/exports/
+**/downloads/
+*.pdf
+
+# Private/imported operational data
+*.csv
+*.xlsx
+*.xls
+!**/examples/*.csv
+!**/samples/*.csv
+!**/templates/*.csv
+tfgmaterdei/google_sheet_config.json
+tfgmaterdei/rascunhos_banca.json
+tfgmaterdei/config_tfg.xls
+
+# Python cache and local environments
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# IDE and OS noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
