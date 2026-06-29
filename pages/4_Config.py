@@ -20,6 +20,7 @@ from src.seed import (
     clear_professors,
     clear_students,
     reset_academic_data,
+    reset_exam_results,
     reset_database,
     seed_initial_data,
 )
@@ -188,15 +189,33 @@ if user["role"] == "coordenacao":
 
     cleanup_options = [
         {
-            "title": "Limpar bancas",
+            "title": "Reiniciar bancas do zero",
+            "description": "Remove apenas notas e atas. Preserva bancas cadastradas, alunos, membros avaliadores, horários, locais e critérios.",
+            "note": "Use quando quiser manter a agenda das bancas, mas refazer todos os lançamentos.",
+            "confirm": "reiniciar bancas",
+            "button": "Reiniciar bancas",
+            "action": reset_exam_results,
+        },
+        {
+            "title": "Reiniciar orientações do zero",
+            "description": "Remove fichas preenchidas, respostas e PDFs registrados. Preserva alunos, professores, orientações e as assessorias geradas.",
+            "note": "Use quando quiser manter quem orienta quem, mas refazer as fichas das assessorias.",
+            "confirm": "reiniciar orientacoes",
+            "button": "Reiniciar orientações",
+            "action": clear_advisory_records,
+        },
+        {
+            "title": "Excluir bancas cadastradas",
             "description": "Remove bancas, membros, notas e atas. Preserva alunos, professores e critérios de banca.",
-            "confirm": "limpar bancas",
-            "button": "Limpar bancas",
+            "note": "Use somente quando quiser apagar a agenda das bancas e cadastrar tudo novamente.",
+            "confirm": "excluir bancas",
+            "button": "Excluir bancas",
             "action": clear_exam_boards,
         },
         {
             "title": "Limpar critérios de banca",
             "description": "Remove critérios de banca e notas vinculadas. As bancas cadastradas são preservadas.",
+            "note": "Use quando quiser trocar a rubrica/grade avaliativa das bancas.",
             "confirm": "limpar criterios de banca",
             "button": "Limpar critérios de banca",
             "action": clear_exam_criteria,
@@ -204,6 +223,7 @@ if user["role"] == "coordenacao":
         {
             "title": "Limpar alunos",
             "description": "Remove alunos, orientações, assessorias, fichas, bancas, notas e atas. Preserva professores, critérios e configurações.",
+            "note": "Use em troca de turma ou quando a base de alunos foi importada errada.",
             "confirm": "limpar alunos",
             "button": "Limpar alunos",
             "action": clear_students,
@@ -211,27 +231,23 @@ if user["role"] == "coordenacao":
         {
             "title": "Limpar professores",
             "description": "Remove professores e vínculos dependentes, incluindo orientações, assessorias, fichas, bancas, notas e atas. Preserva coordenação, alunos, critérios e configurações.",
+            "note": "Use quando a base de professores/avaliadores precisa ser refeita.",
             "confirm": "limpar professores",
             "button": "Limpar professores",
             "action": clear_professors,
         },
         {
-            "title": "Limpar orientações",
+            "title": "Excluir orientações",
             "description": "Remove orientações, assessorias e fichas. Preserva alunos, professores, bancas e critérios.",
-            "confirm": "limpar orientacoes",
-            "button": "Limpar orientações",
+            "note": "Use quando quiser refazer a relação aluno-orientador do zero.",
+            "confirm": "excluir orientacoes",
+            "button": "Excluir orientações",
             "action": clear_orientations,
-        },
-        {
-            "title": "Limpar fichas de assessoria",
-            "description": "Remove fichas preenchidas, respostas e PDFs registrados. As assessorias voltam para Pendente.",
-            "confirm": "limpar fichas",
-            "button": "Limpar fichas",
-            "action": clear_advisory_records,
         },
         {
             "title": "Limpar critérios de assessoria",
             "description": "Remove critérios de assessoria e respostas vinculadas. Preserva alunos, professores e orientações.",
+            "note": "Use quando quiser trocar a rubrica/grade das fichas de assessoria.",
             "confirm": "limpar criterios de assessoria",
             "button": "Limpar critérios de assessoria",
             "action": clear_advisory_criteria,
@@ -239,6 +255,7 @@ if user["role"] == "coordenacao":
         {
             "title": "Limpar PDFs registrados",
             "description": "Remove apenas os registros de PDFs gerados no banco. Arquivos já criados na pasta output não são apagados.",
+            "note": "Use para limpar histórico de exportações sem alterar os dados acadêmicos.",
             "confirm": "limpar pdfs",
             "button": "Limpar PDFs registrados",
             "action": clear_pdf_exports,
@@ -246,6 +263,7 @@ if user["role"] == "coordenacao":
         {
             "title": "Limpar auditoria",
             "description": "Remove o histórico de auditoria. Não altera alunos, professores, fichas ou bancas.",
+            "note": "Use apenas se você não precisa mais do histórico de ações administrativas.",
             "confirm": "limpar auditoria",
             "button": "Limpar auditoria",
             "action": clear_audit_log,
@@ -255,6 +273,7 @@ if user["role"] == "coordenacao":
     for index, option in enumerate(cleanup_options):
         with st.expander(option["title"], expanded=False):
             st.write(option["description"])
+            st.caption(option["note"])
             confirmation = st.text_input(
                 f"Digite `{option['confirm']}` para confirmar",
                 key=f"cleanup_confirm_{index}",

@@ -96,6 +96,21 @@ def clear_exam_boards() -> None:
         )
 
 
+def reset_exam_results() -> None:
+    """Remove apenas notas e atas das bancas. Preserva bancas, membros e critérios."""
+    init_db()
+    with get_connection() as conn:
+        conn.executescript(
+            """
+            DELETE FROM exam_minutes;
+            DELETE FROM exam_grades;
+            UPDATE exam_boards
+            SET status = 'Pendente',
+                updated_at = CURRENT_TIMESTAMP;
+            """
+        )
+
+
 def clear_exam_criteria() -> None:
     """Remove critérios de banca e notas vinculadas. Preserva as bancas."""
     init_db()
