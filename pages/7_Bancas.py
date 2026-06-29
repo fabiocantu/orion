@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unicodedata
+import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -435,6 +436,35 @@ if section == "Minhas bancas":
                     preview_col2.metric("Prévia parcial da banca", f"{board_preview:.2f}")
                     st.caption(f"Cálculo: média aritmética simples dos {len(current_values)} critério(s) preenchidos.")
 
+                    grades_snapshot = {
+                        criterion_id: {
+                            "grade": float(item["grade"]),
+                            "observation": item.get("observation", ""),
+                        }
+                        for criterion_id, item in grades.items()
+                    }
+                    initial_grades_key = f"board_grades_initial_{board['id']}_{advisor_id}"
+                    saved_grades_key = f"board_grades_saved_{board['id']}_{advisor_id}"
+                    saved_grades_at_key = f"board_grades_saved_at_{board['id']}_{advisor_id}"
+                    if initial_grades_key not in st.session_state:
+                        st.session_state[initial_grades_key] = grades_snapshot
+                    if grades_snapshot != st.session_state[initial_grades_key]:
+                        now = time.time()
+                        last_saved_at = float(st.session_state.get(saved_grades_at_key, 0))
+                        if grades_snapshot != st.session_state.get(saved_grades_key) and now - last_saved_at >= 8:
+                            try:
+                                save_grades(board["id"], advisor_id, grades_snapshot)
+                                st.session_state[saved_grades_key] = grades_snapshot
+                                st.session_state[initial_grades_key] = grades_snapshot
+                                st.session_state[saved_grades_at_key] = now
+                                clear_read_cache()
+                            except Exception as exc:
+                                st.warning(f"Não consegui salvar o rascunho das notas: {exc}")
+                    last_grades_autosave = st.session_state.get(saved_grades_at_key)
+                    if last_grades_autosave:
+                        saved_time = time.strftime("%H:%M:%S", time.localtime(float(last_grades_autosave)))
+                        st.caption(f"Notas salvas automaticamente às {saved_time}.")
+
                     if st.button("Salvar notas", key=f"save_grades_{board['id']}_{advisor_id}"):
                         try:
                             save_grades(board["id"], advisor_id, grades)
@@ -447,14 +477,37 @@ if section == "Minhas bancas":
             if member and member["can_record_minutes"]:
                 st.subheader("Ata da banca")
                 minutes = cached_minutes(board["id"])
-                with st.form(f"minutes_form_{board['id']}"):
-                    text = st.text_area(
-                        "Ata",
-                        value=minutes["minutes_text"] if minutes else "",
-                        height=260,
-                        placeholder="Registre decisões, observações, encaminhamentos e recomendações da banca.",
-                    )
-                    submitted = st.form_submit_button("Salvar ata")
+                minutes_key = f"board_minutes_{board['id']}"
+                if minutes_key not in st.session_state:
+                    st.session_state[minutes_key] = minutes["minutes_text"] if minutes else ""
+                text = st.text_area(
+                    "Ata",
+                    key=minutes_key,
+                    height=260,
+                    placeholder="Registre decisões, observações, encaminhamentos e recomendações da banca.",
+                )
+                initial_minutes_key = f"board_minutes_initial_{board['id']}"
+                saved_minutes_key = f"board_minutes_saved_{board['id']}"
+                saved_minutes_at_key = f"board_minutes_saved_at_{board['id']}"
+                if initial_minutes_key not in st.session_state:
+                    st.session_state[initial_minutes_key] = text
+                if text.strip() and text != st.session_state[initial_minutes_key]:
+                    now = time.time()
+                    last_saved_at = float(st.session_state.get(saved_minutes_at_key, 0))
+                    if text != st.session_state.get(saved_minutes_key) and now - last_saved_at >= 10:
+                        try:
+                            save_minutes(board["id"], advisor_id, text)
+                            st.session_state[saved_minutes_key] = text
+                            st.session_state[initial_minutes_key] = text
+                            st.session_state[saved_minutes_at_key] = now
+                            clear_read_cache()
+                        except Exception as exc:
+                            st.warning(f"Não consegui salvar o rascunho da ata: {exc}")
+                last_minutes_autosave = st.session_state.get(saved_minutes_at_key)
+                if last_minutes_autosave:
+                    saved_time = time.strftime("%H:%M:%S", time.localtime(float(last_minutes_autosave)))
+                    st.caption(f"Ata salva automaticamente às {saved_time}.")
+                submitted = st.button("Salvar ata", key=f"save_minutes_{board['id']}")
                 if submitted:
                     try:
                         save_minutes(board["id"], advisor_id, text)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import time
 from pathlib import Path
 
 import streamlit as st
@@ -146,7 +147,7 @@ record = cached_record(session["id"])
 criteria_rows = cached_criteria(context["tfg_stage"], context["phase"])
 existing_answers = cached_answers(record["id"]) if record else {}
 
-st.caption("Rascunho preservado nesta sessão enquanto você preenche a ficha. Evite abrir duas janelas da mesma ficha ao mesmo tempo.")
+st.caption("Rascunho salvo automaticamente enquanto você preenche. Evite abrir duas janelas da mesma ficha ao mesmo tempo.")
 disabled_record = bool(session["locked"] and record)
 
 general_key = f"prof_general_{session['id']}"
@@ -217,6 +218,41 @@ referrals = st.text_area("Encaminhamentos", key=referrals_key, disabled=disabled
 pending_issues = st.text_area("Pendências", key=pending_key, disabled=disabled_record)
 final_comment = st.text_area("Comentário geral", key=final_comment_key, disabled=disabled_record)
 final_evaluation = st.selectbox("Avaliação final", ANSWERS, key=final_eval_key, disabled=disabled_record)
+
+draft_snapshot = {
+    "actual_date": actual_date.isoformat(),
+    "general_notes": general_notes,
+    "referrals": referrals,
+    "pending_issues": pending_issues,
+    "final_evaluation": final_evaluation,
+    "final_comment": final_comment,
+    "answers": answers,
+}
+initial_draft_key = f"prof_draft_initial_{session['id']}"
+saved_draft_key = f"prof_draft_saved_{session['id']}"
+saved_at_key = f"prof_draft_saved_at_{session['id']}"
+if initial_draft_key not in st.session_state:
+    st.session_state[initial_draft_key] = draft_snapshot
+
+if not disabled_record and draft_snapshot != st.session_state[initial_draft_key]:
+    now = time.time()
+    last_saved_at = float(st.session_state.get(saved_at_key, 0))
+    if draft_snapshot != st.session_state.get(saved_draft_key) and now - last_saved_at >= 8:
+        save_record(
+            session["id"],
+            advisor["id"],
+            draft_snapshot,
+            user,
+            lock_record=False,
+        )
+        st.session_state[saved_draft_key] = draft_snapshot
+        st.session_state[initial_draft_key] = draft_snapshot
+        st.session_state[saved_at_key] = now
+
+last_autosave = st.session_state.get(saved_at_key)
+if last_autosave and not disabled_record:
+    saved_time = time.strftime("%H:%M:%S", time.localtime(float(last_autosave)))
+    st.caption(f"Rascunho salvo automaticamente às {saved_time}.")
 
 st.markdown("**Ações da ficha**")
 save_col, send_col = st.columns(2)
