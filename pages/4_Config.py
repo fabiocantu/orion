@@ -9,7 +9,20 @@ from src.audit import list_audit
 from src.boards import public_exam_calendar_enabled, set_public_exam_calendar_enabled
 from src.database import DB_PATH, database_label, get_database_backend, init_db, query, set_database_backend
 from src.google_sheets import get_google_sheet_url, import_from_google_sheets, save_google_sheet_url
-from src.seed import reset_academic_data, reset_database, seed_initial_data
+from src.seed import (
+    clear_advisory_criteria,
+    clear_advisory_records,
+    clear_audit_log,
+    clear_exam_boards,
+    clear_exam_criteria,
+    clear_orientations,
+    clear_pdf_exports,
+    clear_professors,
+    clear_students,
+    reset_academic_data,
+    reset_database,
+    seed_initial_data,
+)
 from src.utils import default_calendar_dates, get_advisory_calendar, rows_to_df, save_advisory_calendar
 
 
@@ -169,6 +182,90 @@ if user["role"] == "coordenacao":
     if st.button("Resetar alunos, professores e fichas", disabled=not confirm_academic_reset):
         reset_academic_data()
         st.success("Base acadêmica resetada. A coordenação foi preservada.")
+
+    st.subheader("Limpezas seletivas")
+    st.warning("Use com cuidado. As ações abaixo apagam dados do banco ativo e não desfazem automaticamente.")
+
+    cleanup_options = [
+        {
+            "title": "Limpar bancas",
+            "description": "Remove bancas, membros, notas e atas. Preserva alunos, professores e critérios de banca.",
+            "confirm": "limpar bancas",
+            "button": "Limpar bancas",
+            "action": clear_exam_boards,
+        },
+        {
+            "title": "Limpar critérios de banca",
+            "description": "Remove critérios de banca e notas vinculadas. As bancas cadastradas são preservadas.",
+            "confirm": "limpar criterios de banca",
+            "button": "Limpar critérios de banca",
+            "action": clear_exam_criteria,
+        },
+        {
+            "title": "Limpar alunos",
+            "description": "Remove alunos, orientações, assessorias, fichas, bancas, notas e atas. Preserva professores, critérios e configurações.",
+            "confirm": "limpar alunos",
+            "button": "Limpar alunos",
+            "action": clear_students,
+        },
+        {
+            "title": "Limpar professores",
+            "description": "Remove professores e vínculos dependentes, incluindo orientações, assessorias, fichas, bancas, notas e atas. Preserva coordenação, alunos, critérios e configurações.",
+            "confirm": "limpar professores",
+            "button": "Limpar professores",
+            "action": clear_professors,
+        },
+        {
+            "title": "Limpar orientações",
+            "description": "Remove orientações, assessorias e fichas. Preserva alunos, professores, bancas e critérios.",
+            "confirm": "limpar orientacoes",
+            "button": "Limpar orientações",
+            "action": clear_orientations,
+        },
+        {
+            "title": "Limpar fichas de assessoria",
+            "description": "Remove fichas preenchidas, respostas e PDFs registrados. As assessorias voltam para Pendente.",
+            "confirm": "limpar fichas",
+            "button": "Limpar fichas",
+            "action": clear_advisory_records,
+        },
+        {
+            "title": "Limpar critérios de assessoria",
+            "description": "Remove critérios de assessoria e respostas vinculadas. Preserva alunos, professores e orientações.",
+            "confirm": "limpar criterios de assessoria",
+            "button": "Limpar critérios de assessoria",
+            "action": clear_advisory_criteria,
+        },
+        {
+            "title": "Limpar PDFs registrados",
+            "description": "Remove apenas os registros de PDFs gerados no banco. Arquivos já criados na pasta output não são apagados.",
+            "confirm": "limpar pdfs",
+            "button": "Limpar PDFs registrados",
+            "action": clear_pdf_exports,
+        },
+        {
+            "title": "Limpar auditoria",
+            "description": "Remove o histórico de auditoria. Não altera alunos, professores, fichas ou bancas.",
+            "confirm": "limpar auditoria",
+            "button": "Limpar auditoria",
+            "action": clear_audit_log,
+        },
+    ]
+
+    for index, option in enumerate(cleanup_options):
+        with st.expander(option["title"], expanded=False):
+            st.write(option["description"])
+            confirmation = st.text_input(
+                f"Digite `{option['confirm']}` para confirmar",
+                key=f"cleanup_confirm_{index}",
+            )
+            if st.button(option["button"], disabled=confirmation.strip().lower() != option["confirm"], key=f"cleanup_button_{index}"):
+                try:
+                    option["action"]()
+                    st.success(f"{option['title']} concluído.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
 
     st.subheader("Auditoria")
     st.dataframe(rows_to_df(list_audit()), width="stretch")

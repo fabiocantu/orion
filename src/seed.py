@@ -82,6 +82,128 @@ def reset_academic_data() -> None:
         )
 
 
+def clear_exam_boards() -> None:
+    """Remove bancas, membros, notas e atas. Preserva alunos, professores e critérios."""
+    init_db()
+    with get_connection() as conn:
+        conn.executescript(
+            """
+            DELETE FROM exam_minutes;
+            DELETE FROM exam_grades;
+            DELETE FROM exam_board_members;
+            DELETE FROM exam_boards;
+            """
+        )
+
+
+def clear_exam_criteria() -> None:
+    """Remove critérios de banca e notas vinculadas. Preserva as bancas."""
+    init_db()
+    with get_connection() as conn:
+        conn.executescript(
+            """
+            DELETE FROM exam_grades;
+            DELETE FROM exam_criteria;
+            """
+        )
+
+
+def clear_students() -> None:
+    """Remove alunos e tudo que depende deles. Preserva professores, critérios e configurações."""
+    init_db()
+    with get_connection() as conn:
+        conn.executescript(
+            """
+            DELETE FROM pdf_exports;
+            DELETE FROM exam_minutes;
+            DELETE FROM exam_grades;
+            DELETE FROM exam_board_members;
+            DELETE FROM exam_boards;
+            DELETE FROM advisory_answers;
+            DELETE FROM advisory_records;
+            DELETE FROM advisory_sessions;
+            DELETE FROM orientations;
+            DELETE FROM students;
+            """
+        )
+
+
+def clear_professors() -> None:
+    """Remove professores e vínculos dependentes. Preserva coordenação, alunos, critérios e configurações."""
+    init_db()
+    with get_connection() as conn:
+        conn.executescript(
+            """
+            DELETE FROM pdf_exports;
+            DELETE FROM exam_minutes;
+            DELETE FROM exam_grades;
+            DELETE FROM exam_board_members;
+            DELETE FROM exam_boards;
+            DELETE FROM advisory_answers;
+            DELETE FROM advisory_records;
+            DELETE FROM advisory_sessions;
+            DELETE FROM orientations;
+            DELETE FROM advisors;
+            DELETE FROM users WHERE role = 'professor';
+            """
+        )
+
+
+def clear_orientations() -> None:
+    """Remove orientações, assessorias e fichas. Preserva alunos, professores, bancas e critérios."""
+    init_db()
+    with get_connection() as conn:
+        conn.executescript(
+            """
+            DELETE FROM pdf_exports;
+            DELETE FROM advisory_answers;
+            DELETE FROM advisory_records;
+            DELETE FROM advisory_sessions;
+            DELETE FROM orientations;
+            """
+        )
+
+
+def clear_advisory_records() -> None:
+    """Remove fichas preenchidas e libera as assessorias para novo preenchimento."""
+    init_db()
+    with get_connection() as conn:
+        conn.executescript(
+            """
+            DELETE FROM pdf_exports;
+            DELETE FROM advisory_answers;
+            DELETE FROM advisory_records;
+            UPDATE advisory_sessions
+            SET actual_date = NULL,
+                locked = 0,
+                status = 'Pendente';
+            """
+        )
+
+
+def clear_advisory_criteria() -> None:
+    """Remove critérios de assessoria e respostas vinculadas. Preserva alunos e orientações."""
+    init_db()
+    with get_connection() as conn:
+        conn.executescript(
+            """
+            DELETE FROM pdf_exports;
+            DELETE FROM advisory_answers;
+            DELETE FROM criteria;
+            """
+        )
+
+
+def clear_pdf_exports() -> None:
+    init_db()
+    execute("DELETE FROM pdf_exports")
+
+
+def clear_audit_log() -> None:
+    init_db()
+    execute("DELETE FROM audit_log")
+
+
 def seed_initial_data(force: bool = False) -> None:
     init_db()
     from .boards import seed_exam_criteria
