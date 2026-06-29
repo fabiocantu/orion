@@ -26,17 +26,72 @@ from src.utils import (
 )
 
 
-st.set_page_config(page_title="Professor", layout="wide")
+st.set_page_config(page_title="Orientação", layout="wide")
 user = require_role("professor")
-advisor = get_advisor_by_user(user["id"])
 
-st.title("Área do Professor")
-st.caption(f"Professor logado: {user['name']}")
+
+def to_dicts(rows) -> list[dict]:
+    return [dict(row) for row in rows]
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_advisor_by_user(user_id: int) -> dict | None:
+    row = get_advisor_by_user(user_id)
+    return dict(row) if row else None
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_professor_students(user_id: int) -> list[dict]:
+    return to_dicts(list_professor_students(user_id))
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_sessions(orientation_id: int) -> list[dict]:
+    return to_dicts(list_sessions(orientation_id))
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_student_context(session_id: int) -> dict | None:
+    row = get_student_context_by_session(session_id)
+    return dict(row) if row else None
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_record(session_id: int) -> dict | None:
+    row = get_record(session_id)
+    return dict(row) if row else None
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_criteria(tfg_stage: str, phase: str) -> list[dict]:
+    return to_dicts(list_criteria(tfg_stage, phase))
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_answers(record_id: int) -> dict[int, dict]:
+    return get_answers(record_id)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_pdf_exports(record_id: int) -> list[dict]:
+    from src.utils import list_pdf_exports
+
+    return to_dicts(list_pdf_exports(record_id))
+
+
+def clear_read_cache() -> None:
+    st.cache_data.clear()
+
+
+advisor = cached_advisor_by_user(user["id"])
+
+st.title("Área de Orientação")
+st.caption(f"Orientador logado: {user['name']}")
 if st.session_state.pop("celebrate_record_sent", False):
     st.balloons()
     st.success(st.session_state.pop("celebrate_record_message", "Ficha finalizada com sucesso."))
 
-students = list_professor_students(user["id"])
+students = cached_professor_students(user["id"])
 if not students:
     st.warning("Nenhum orientando vinculado.")
     st.stop()
@@ -51,7 +106,7 @@ col_b.metric("Ano/Semestre", f"{student['year']}/{student['semester']}")
 col_c.metric("Orientador", student["advisor_name"])
 st.write(f"**Tema:** {student['theme']}")
 
-sessions = list_sessions(student["orientation_id"])
+sessions = cached_sessions(student["orientation_id"])
 session_label = st.selectbox(
     "Assessoria",
     [f"{s['session_number']} - {s['phase']} - {s['status']}" for s in sessions],
@@ -62,10 +117,10 @@ st.subheader(f"Ficha da assessoria {session['session_number']}")
 if session["locked"]:
     st.info("Esta ficha está bloqueada após preenchimento. A coordenação pode destravar se necessário.")
 
-context = get_student_context_by_session(session["id"])
-record = get_record(session["id"])
-criteria_rows = list_criteria(context["tfg_stage"], context["phase"])
-existing_answers = get_answers(record["id"]) if record else {}
+context = cached_student_context(session["id"])
+record = cached_record(session["id"])
+criteria_rows = cached_criteria(context["tfg_stage"], context["phase"])
+existing_answers = cached_answers(record["id"]) if record else {}
 
 st.caption("Rascunho preservado nesta sessão enquanto você preenche a ficha. Evite abrir duas janelas da mesma ficha ao mesmo tempo.")
 disabled_record = bool(session["locked"] and record)
@@ -172,18 +227,18 @@ if submitted or submitted_send:
             st.session_state["celebrate_record_message"] = f"Ficha salva e envio simulado. {result['message']}"
         else:
             st.success("Ficha salva.")
+        clear_read_cache()
         st.rerun()
 
-record = get_record(session["id"])
+record = cached_record(session["id"])
 if record:
-    from src.utils import list_pdf_exports
-
     pdf_col, download_col, email_col = st.columns(3)
     if pdf_col.button("Gerar PDF"):
         pdf_path = generate_record_pdf(session["id"])
         st.success(f"PDF gerado: {pdf_path.name}")
+        clear_read_cache()
         st.rerun()
-    exports = list_pdf_exports(record["id"])
+    exports = cached_pdf_exports(record["id"])
     if exports:
         latest = Path(exports[0]["file_path"])
         if latest.exists():
@@ -193,7 +248,7 @@ if record:
         st.info(result["message"])
 
 st.subheader("Histórico do aluno")
-history = list_sessions(student["orientation_id"])
+history = cached_sessions(student["orientation_id"])
 st.dataframe(
     [
         {

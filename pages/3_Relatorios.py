@@ -10,6 +10,99 @@ from src.utils import rows_to_df
 st.set_page_config(page_title="Relatórios", layout="wide")
 user = require_login()
 
+
+def to_dicts(rows) -> list[dict]:
+    return [dict(row) for row in rows]
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_by_professor() -> list[dict]:
+    return to_dicts(
+        query(
+            """
+            SELECT advisors.name AS professor, COUNT(students.id) AS alunos
+            FROM advisors
+            LEFT JOIN orientations ON orientations.advisor_id = advisors.id
+            LEFT JOIN students ON students.id = orientations.student_id
+            GROUP BY advisors.id
+            ORDER BY advisors.name
+            """
+        )
+    )
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_summary(stage_filter: str, phase_filter: str) -> list[dict]:
+    where_sql, params = report_filters(stage_filter, phase_filter)
+    return to_dicts(
+        query(
+            f"""
+            SELECT advisory_sessions.status, COUNT(*) AS quantidade
+            FROM advisory_sessions
+            JOIN orientations ON orientations.id = advisory_sessions.orientation_id
+            JOIN students ON students.id = orientations.student_id
+            {where_sql}
+            GROUP BY advisory_sessions.status
+            """,
+            tuple(params),
+        )
+    )
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_evaluations(stage_filter: str, phase_filter: str) -> list[dict]:
+    where_sql, params = report_filters(stage_filter, phase_filter)
+    return to_dicts(
+        query(
+            f"""
+            SELECT COALESCE(advisory_records.final_evaluation, 'Sem avaliação') AS avaliacao, COUNT(*) AS quantidade
+            FROM advisory_sessions
+            JOIN orientations ON orientations.id = advisory_sessions.orientation_id
+            JOIN students ON students.id = orientations.student_id
+            LEFT JOIN advisory_records ON advisory_records.session_id = advisory_sessions.id
+            {where_sql}
+            GROUP BY COALESCE(advisory_records.final_evaluation, 'Sem avaliação')
+            """,
+            tuple(params),
+        )
+    )
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_detail(stage_filter: str, phase_filter: str) -> list[dict]:
+    where_sql, params = report_filters(stage_filter, phase_filter)
+    return to_dicts(
+        query(
+            f"""
+            SELECT students.name AS aluno, advisors.name AS professor, students.tfg_stage AS etapa,
+                   advisory_sessions.phase AS fase, advisory_sessions.session_number AS assessoria,
+                   advisory_sessions.status, COALESCE(advisory_records.final_evaluation, '-') AS avaliacao
+            FROM advisory_sessions
+            JOIN orientations ON orientations.id = advisory_sessions.orientation_id
+            JOIN students ON students.id = orientations.student_id
+            JOIN advisors ON advisors.id = orientations.advisor_id
+            LEFT JOIN advisory_records ON advisory_records.session_id = advisory_sessions.id
+            {where_sql}
+            ORDER BY professor, aluno, assessoria
+            """,
+            tuple(params),
+        )
+    )
+
+
+def report_filters(stage_filter: str, phase_filter: str) -> tuple[str, list[str]]:
+    where = []
+    params = []
+    if stage_filter != "Todas":
+        where.append("students.tfg_stage = ?")
+        params.append(stage_filter)
+    if phase_filter != "Todas":
+        where.append("advisory_sessions.phase = ?")
+        params.append(phase_filter)
+    where_sql = "WHERE " + " AND ".join(where) if where else ""
+    return where_sql, params
+
+
 st.title("Relatórios")
 stage = st.selectbox("Filtrar por etapa", ["Todas", "TFG I", "TFG II"])
 phase = st.selectbox(
@@ -23,73 +116,19 @@ phase = st.selectbox(
     ],
 )
 
-where = []
-params = []
-if stage != "Todas":
-    where.append("students.tfg_stage = ?")
-    params.append(stage)
-if phase != "Todas":
-    where.append("advisory_sessions.phase = ?")
-    params.append(phase)
-where_sql = "WHERE " + " AND ".join(where) if where else ""
-
-by_professor = query(
-    """
-    SELECT advisors.name AS professor, COUNT(students.id) AS alunos
-    FROM advisors
-    LEFT JOIN orientations ON orientations.advisor_id = advisors.id
-    LEFT JOIN students ON students.id = orientations.student_id
-    GROUP BY advisors.id
-    ORDER BY advisors.name
-    """
-)
+by_professor = cached_by_professor()
 st.subheader("Alunos por professor")
 st.dataframe(rows_to_df(by_professor), width="stretch")
 
-summary = query(
-    f"""
-    SELECT advisory_sessions.status, COUNT(*) AS quantidade
-    FROM advisory_sessions
-    JOIN orientations ON orientations.id = advisory_sessions.orientation_id
-    JOIN students ON students.id = orientations.student_id
-    {where_sql}
-    GROUP BY advisory_sessions.status
-    """,
-    tuple(params),
-)
+summary = cached_summary(stage, phase)
 st.subheader("Assessorias feitas e pendentes")
 st.dataframe(rows_to_df(summary), width="stretch")
 
-evaluations = query(
-    f"""
-    SELECT COALESCE(advisory_records.final_evaluation, 'Sem avaliação') AS avaliacao, COUNT(*) AS quantidade
-    FROM advisory_sessions
-    JOIN orientations ON orientations.id = advisory_sessions.orientation_id
-    JOIN students ON students.id = orientations.student_id
-    LEFT JOIN advisory_records ON advisory_records.session_id = advisory_sessions.id
-    {where_sql}
-    GROUP BY COALESCE(advisory_records.final_evaluation, 'Sem avaliação')
-    """,
-    tuple(params),
-)
+evaluations = cached_evaluations(stage, phase)
 st.subheader("Avaliações finais")
 st.dataframe(rows_to_df(evaluations), width="stretch")
 
-detail = query(
-    f"""
-    SELECT students.name AS aluno, advisors.name AS professor, students.tfg_stage AS etapa,
-           advisory_sessions.phase AS fase, advisory_sessions.session_number AS assessoria,
-           advisory_sessions.status, COALESCE(advisory_records.final_evaluation, '-') AS avaliacao
-    FROM advisory_sessions
-    JOIN orientations ON orientations.id = advisory_sessions.orientation_id
-    JOIN students ON students.id = orientations.student_id
-    JOIN advisors ON advisors.id = orientations.advisor_id
-    LEFT JOIN advisory_records ON advisory_records.session_id = advisory_sessions.id
-    {where_sql}
-    ORDER BY professor, aluno, assessoria
-    """,
-    tuple(params),
-)
+detail = cached_detail(stage, phase)
 df = rows_to_df(detail)
 st.subheader("Relatório detalhado")
 st.dataframe(df, width="stretch")

@@ -119,7 +119,7 @@ else:
     render_sidebar_navigation(user)
     st.write(f"Bem-vindo(a), **{user['name']}**.")
     if user["role"] == "professor":
-        st.page_link("pages/1_Professor.py", label="Abrir área do professor", icon="📚")
+        st.page_link("pages/1_Professor.py", label="Abrir orientação", icon="📚")
         st.page_link("pages/7_Bancas.py", label="Abrir bancas", icon="🏛️")
     else:
         st.page_link("pages/2_Coordenacao.py", label="Abrir coordenação", icon="🏛️")

@@ -8,7 +8,7 @@ from .database import execute, query_one
 NAV_ITEMS = {
     "professor": [
         {"path": "app.py", "label": "Início", "icon": "🏠"},
-        {"path": "pages/1_Professor.py", "label": "Professor", "icon": "📚"},
+        {"path": "pages/1_Professor.py", "label": "Orientação", "icon": "📚"},
         {"path": "pages/7_Bancas.py", "label": "Bancas", "icon": "🏛️"},
         {"path": "pages/4_Config.py", "label": "Configurações", "icon": "🔧"},
     ],

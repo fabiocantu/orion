@@ -32,12 +32,71 @@ from src.utils import (
 st.set_page_config(page_title="Coordenação", layout="wide")
 user = require_role("coordenacao")
 
+
+def to_dicts(rows) -> list[dict]:
+    return [dict(row) for row in rows]
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_advisors() -> list[dict]:
+    return to_dicts(query("SELECT * FROM advisors ORDER BY name"))
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_students(advisor_id: int | None, tfg_stage: str | None, year: int, semester: int | None) -> list[dict]:
+    return to_dicts(
+        list_all_students(
+            {
+                "advisor_id": advisor_id,
+                "tfg_stage": tfg_stage,
+                "year": year,
+                "semester": semester,
+            }
+        )
+    )
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_sessions(orientation_id: int) -> list[dict]:
+    return to_dicts(list_sessions(orientation_id))
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_student_context(session_id: int) -> dict | None:
+    row = get_student_context_by_session(session_id)
+    return dict(row) if row else None
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_record(session_id: int) -> dict | None:
+    row = get_record(session_id)
+    return dict(row) if row else None
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_criteria(tfg_stage: str, phase: str) -> list[dict]:
+    return to_dicts(list_criteria(tfg_stage, phase))
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_answers(record_id: int) -> dict[int, dict]:
+    return get_answers(record_id)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_pdf_exports(record_id: int) -> list[dict]:
+    return to_dicts(list_pdf_exports(record_id))
+
+
+def clear_read_cache() -> None:
+    st.cache_data.clear()
+
 st.title("Coordenação")
 if st.session_state.pop("celebrate_record_sent", False):
     st.balloons()
     st.success(st.session_state.pop("celebrate_record_message", "Ficha finalizada com sucesso."))
 
-advisors = query("SELECT * FROM advisors ORDER BY name")
+advisors = cached_advisors()
 advisor_options = {"Todos": None} | {a["name"]: a["id"] for a in advisors}
 col1, col2, col3, col4 = st.columns(4)
 advisor_filter = col1.selectbox("Professor", list(advisor_options.keys()))
@@ -51,7 +110,7 @@ filters = {
     "year": int(year_filter),
     "semester": None if semester_filter == "Todos" else int(semester_filter),
 }
-students = list_all_students(filters)
+students = cached_students(filters["advisor_id"], filters["tfg_stage"], filters["year"], filters["semester"])
 if not students:
     st.warning("Nenhum aluno encontrado.")
     st.stop()
@@ -60,13 +119,13 @@ student_map = {f"{s['name']} - {s['advisor_name']} - {s['tfg_stage']}": s for s 
 student = student_map[st.selectbox("Aluno", list(student_map.keys()))]
 st.write(f"**Tema:** {student['theme']}")
 
-sessions = list_sessions(student["orientation_id"])
+sessions = cached_sessions(student["orientation_id"])
 session_map = {f"{s['session_number']} - {s['phase']} - {s['status']} - {s['final_evaluation'] or '-'}": s for s in sessions}
 session = session_map[st.selectbox("Ficha", list(session_map.keys()))]
-context = get_student_context_by_session(session["id"])
-record = get_record(session["id"])
-criteria_rows = list_criteria(context["tfg_stage"], context["phase"])
-existing_answers = get_answers(record["id"]) if record else {}
+context = cached_student_context(session["id"])
+record = cached_record(session["id"])
+criteria_rows = cached_criteria(context["tfg_stage"], context["phase"])
+existing_answers = cached_answers(record["id"]) if record else {}
 
 with st.expander("Controles de coordenação", expanded=True):
     col_a, col_b = st.columns(2)
@@ -77,6 +136,7 @@ with st.expander("Controles de coordenação", expanded=True):
         else:
             unlock_session(session["id"], user["id"], unlock_justification)
             st.success("Assessoria destravada.")
+            clear_read_cache()
             st.rerun()
     new_date = col_b.date_input("Nova data prevista", value=date.fromisoformat(context["planned_date"]), format="DD/MM/YYYY")
     date_justification = col_b.text_input("Justificativa para alterar data")
@@ -86,6 +146,7 @@ with st.expander("Controles de coordenação", expanded=True):
         else:
             update_planned_date(session["id"], new_date.isoformat(), user["id"], date_justification)
             st.success("Data atualizada.")
+            clear_read_cache()
             st.rerun()
 
 st.subheader("Editar ficha")
@@ -196,16 +257,18 @@ if submitted or submitted_send:
                 st.session_state["celebrate_record_message"] = f"Ficha salva e envio simulado. {result['message']}"
             else:
                 st.success("Ficha salva.")
+            clear_read_cache()
             st.rerun()
 
-record = get_record(session["id"])
+record = cached_record(session["id"])
 if record:
     col_pdf, col_download, col_email = st.columns(3)
     if col_pdf.button("Gerar PDF"):
         pdf_path = generate_record_pdf(session["id"])
         st.success(f"PDF gerado: {pdf_path.name}")
+        clear_read_cache()
         st.rerun()
-    exports = list_pdf_exports(record["id"])
+    exports = cached_pdf_exports(record["id"])
     if exports:
         latest = Path(exports[0]["file_path"])
         if latest.exists():
