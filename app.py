@@ -84,21 +84,41 @@ def render_public_exam_calendar() -> None:
         )
 
     st.caption(f"Semana de {start.strftime('%d/%m/%Y')} a {end.strftime('%d/%m/%Y')}")
-    if rows:
-        df = pd.DataFrame(rows)
-
-        def color_status(row):
-            colors = {
-                "A seguir": "color: #15803d; font-weight: 600",
-                "Em andamento": "color: #c2410c; font-weight: 600",
-                "Finalizada": "color: #b91c1c; font-weight: 600",
-            }
-            return [colors.get(row["Status"], "") if column == "Status" else "" for column in row.index]
-
-        st.dataframe(df.style.apply(color_status, axis=1), width="stretch", hide_index=True)
-    else:
+    if not rows:
         st.info("Nenhuma banca pública encontrada nesta semana.")
+        return
 
+    view_mode = st.radio(
+        "Visualização",
+        ["Cards", "Tabela"],
+        horizontal=True,
+        key="public_exam_calendar_view",
+    )
+    df = pd.DataFrame(rows)
+
+    if view_mode == "Cards":
+        render_item_list(
+            [
+                {
+                    "title": f"{row['Data']} {row['Horário']} | {row['Etapa']}",
+                    "meta": f"{row['Aluno']} | {row['Tema']} | {row['Local']}",
+                    "status": row["Status"],
+                }
+                for row in rows
+            ],
+            "Nenhuma banca pública encontrada nesta semana.",
+        )
+        return
+
+    def color_status(row):
+        colors = {
+            "A seguir": "color: #15803d; font-weight: 600",
+            "Em andamento": "color: #c2410c; font-weight: 600",
+            "Finalizada": "color: #b91c1c; font-weight: 600",
+        }
+        return [colors.get(row["Status"], "") if column == "Status" else "" for column in row.index]
+
+    st.dataframe(df.style.apply(color_status, axis=1), width="stretch", hide_index=True)
 
 user = st.session_state.get("user")
 if not user:
