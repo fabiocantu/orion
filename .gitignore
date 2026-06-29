@@ -6,6 +6,8 @@
 **/.streamlit/secrets.toml
 
 # Local databases and generated database files
+data/runtime_settings.json
+**/data/runtime_settings.json
 *.db
 *.db-*
 *.sqlite
