@@ -35,10 +35,12 @@ from src.boards import (
     update_exam_criterion,
 )
 from src.pdf_generator import generate_board_pdf
+from src.ui import apply_app_style, paginate_dataframe, render_item_list
 from src.utils import create_professor, format_date_br, list_advisors, list_all_students, rows_to_df
 
 
 st.set_page_config(page_title="Bancas", layout="wide")
+apply_app_style()
 user = require_login()
 
 
@@ -108,7 +110,16 @@ def cached_advisors() -> list[dict]:
 
 
 def clear_read_cache() -> None:
-    st.cache_data.clear()
+    cached_boards.clear()
+    cached_board.clear()
+    cached_board_members.clear()
+    cached_exam_criteria.clear()
+    cached_grades.clear()
+    cached_minutes.clear()
+    cached_grade_summary.clear()
+    cached_results.clear()
+    cached_students.clear()
+    cached_advisors.clear()
 
 
 bootstrap_boards_page()
@@ -325,6 +336,39 @@ if section == "Minhas bancas":
             if board["location"]:
                 st.write(f"**Local:** {board['location']}")
 
+            notes_status = "Pendente"
+            if status["total_criteria"] > 0 and status["sent"] and not status["pending"]:
+                notes_status = "Completa"
+            elif status["sent"]:
+                notes_status = "Parcial"
+            pdf_path_value = st.session_state.get(f"board_pdf_{board['id']}")
+            pdf_status = "Registrada" if pdf_path_value and Path(pdf_path_value).exists() else "Pendente"
+            st.subheader("Fluxo da banca")
+            render_item_list(
+                [
+                    {
+                        "title": "Dados da banca",
+                        "meta": f"{format_date_br(board['scheduled_date'])} {board['scheduled_time'] or ''} | {board['location'] or '-'}",
+                        "status": "Completa",
+                    },
+                    {
+                        "title": "Notas",
+                        "meta": f"{len(status['sent'])}/{status['total_evaluators']} avaliador(es) com nota completa",
+                        "status": notes_status,
+                    },
+                    {
+                        "title": "Ata",
+                        "meta": "Registrada pelo orientador" if status["minutes"] else "Aguardando registro",
+                        "status": "Registrada" if status["minutes"] else "Pendente",
+                    },
+                    {
+                        "title": "PDF",
+                        "meta": "Relatório disponível para download" if pdf_status == "Registrada" else "Gerado sob demanda",
+                        "status": pdf_status,
+                    },
+                ]
+            )
+
             members = cached_board_members(board["id"])
             st.subheader("Composição da banca")
             st.dataframe(
@@ -492,7 +536,8 @@ elif section == "Dashboard":
         col3.metric("Pendentes/parciais", int((results["status"] != "Completa").sum()))
         results["average_grade"] = pd.to_numeric(results["average_grade"], errors="coerce").round(2)
         st.dataframe(
-            results.rename(
+            paginate_dataframe(
+                results.rename(
                 columns={
                     "student_name": "Aluno",
                     "stage": "Etapa",
@@ -502,6 +547,8 @@ elif section == "Dashboard":
                     "grades_count": "Notas registradas",
                     "minutes_status": "Ata",
                 }
+                ),
+                "board_results",
             ),
             width="stretch",
             hide_index=True,
@@ -515,7 +562,11 @@ elif section == "Dashboard":
                 pivot["Banca Final"] = 0
             pivot["Nota parcial TFG"] = (pivot["Pré-Banca"].fillna(0) * 0.3 + pivot["Banca Final"].fillna(0) * 0.7).round(2)
             st.subheader("Consolidação TFG")
-            st.dataframe(pivot.rename(columns={"student_name": "Aluno"}), width="stretch", hide_index=True)
+            st.dataframe(
+                paginate_dataframe(pivot.rename(columns={"student_name": "Aluno"}), "board_tfg_consolidation"),
+                width="stretch",
+                hide_index=True,
+            )
 
 elif is_coord and section == "Gerenciar":
     st.subheader("Criar bancas em lote")
@@ -627,7 +678,8 @@ elif is_coord and section == "Critérios":
     st.subheader("Critérios de avaliação")
     stage_filter = st.selectbox("Etapa", EXAM_STAGES, key="criteria_stage")
     criteria = cached_exam_criteria(stage_filter, active_only=False)
-    st.dataframe(rows_to_df(criteria), width="stretch")
+    criteria_df = rows_to_df(criteria)
+    st.dataframe(paginate_dataframe(criteria_df, "exam_criteria"), width="stretch")
 
     st.subheader("Importar critérios de banca em lote")
     criteria_template = build_exam_criteria_template()

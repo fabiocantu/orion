@@ -71,13 +71,21 @@ A geração de PDF usa ReportLab para evitar dependências de sistema operaciona
 
 ## Neon/PostgreSQL
 
-O app usa SQLite quando nao existe `DATABASE_URL`. Para usar Neon/PostgreSQL, crie o arquivo local `.streamlit/secrets.toml` com:
+O app usa SQLite local quando nao existe `DATABASE_URL`. Quando uma `DATABASE_URL` PostgreSQL valida estiver configurada, o app usa Neon/PostgreSQL automaticamente.
+
+Para usar Neon/PostgreSQL, crie o arquivo local `.streamlit/secrets.toml` com:
 
 ```toml
 DATABASE_URL = "postgresql://usuario:senha@host/neondb?sslmode=require"
 ```
 
 Esse arquivo fica fora do controle de versao via `.gitignore`.
+
+Se quiser forcar explicitamente um backend, use:
+
+```toml
+DATABASE_BACKEND = "neon"   # ou "sqlite"
+```
 
 Para migrar o SQLite local para o Neon:
 

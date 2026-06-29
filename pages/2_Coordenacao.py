@@ -9,6 +9,7 @@ from src.auth import render_footer, require_role
 from src.database import query
 from src.email_sender import send_record_email
 from src.pdf_generator import generate_record_pdf
+from src.ui import apply_app_style
 from src.utils import (
     ANSWERS,
     NOT_APPLICABLE,
@@ -30,6 +31,7 @@ from src.utils import (
 
 
 st.set_page_config(page_title="Coordenação", layout="wide")
+apply_app_style()
 user = require_role("coordenacao")
 
 
@@ -89,7 +91,14 @@ def cached_pdf_exports(record_id: int) -> list[dict]:
 
 
 def clear_read_cache() -> None:
-    st.cache_data.clear()
+    cached_advisors.clear()
+    cached_students.clear()
+    cached_sessions.clear()
+    cached_student_context.clear()
+    cached_record.clear()
+    cached_criteria.clear()
+    cached_answers.clear()
+    cached_pdf_exports.clear()
 
 st.title("Coordenação")
 if st.session_state.pop("celebrate_record_sent", False):
@@ -114,6 +123,19 @@ students = cached_students(filters["advisor_id"], filters["tfg_stage"], filters[
 if not students:
     st.warning("Nenhum aluno encontrado.")
     st.stop()
+
+search_text = st.text_input("Buscar aluno ou professor", key="coord_student_search").strip().lower()
+if search_text:
+    students = [
+        student
+        for student in students
+        if search_text in str(student["name"]).lower()
+        or search_text in str(student["advisor_name"]).lower()
+        or search_text in str(student["theme"]).lower()
+    ]
+    if not students:
+        st.info("Nenhum aluno encontrado para a busca atual.")
+        st.stop()
 
 student_map = {f"{s['name']} - {s['advisor_name']} - {s['tfg_stage']}": s for s in students}
 student = student_map[st.selectbox("Aluno", list(student_map.keys()))]

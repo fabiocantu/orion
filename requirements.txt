@@ -3,5 +3,5 @@ pandas
 reportlab
 python-dotenv
 openpyxl
-psycopg[binary]
+psycopg[binary,pool]
 

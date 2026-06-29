@@ -7,11 +7,16 @@ import streamlit as st
 
 from src.auth import login_form, render_footer, render_sidebar_navigation
 from src.boards import list_public_exam_boards, public_exam_calendar_enabled
+from src.dashboard import dashboard_snapshot
 from src.seed import seed_initial_data
+from src.ui import apply_app_style, render_item_list, render_kpis
 from src.utils import format_date_br
 
 
 st.set_page_config(page_title="Gestor de Assessoria de TFG", page_icon="🎓", layout="wide")
+
+
+apply_app_style()
 
 
 @st.cache_resource
@@ -21,9 +26,6 @@ def bootstrap_app() -> bool:
 
 
 bootstrap_app()
-
-st.title("Início")
-st.caption("Gestor de Assessoria de TFG | Arquitetura e Urbanismo - Centro Universitário Mater Dei")
 
 
 def render_public_exam_calendar() -> None:
@@ -100,6 +102,8 @@ def render_public_exam_calendar() -> None:
 
 user = st.session_state.get("user")
 if not user:
+    st.title("Início")
+    st.caption("Gestor de Assessoria de TFG | Arquitetura e Urbanismo - Centro Universitário Mater Dei")
     st.markdown(
         """
         <style>
@@ -117,15 +121,34 @@ if not user:
     st.page_link("pages/6_Consulta_Aluno.py", label="Consulta do aluno por RA", icon="🎓")
 else:
     render_sidebar_navigation(user)
-    st.write(f"Bem-vindo(a), **{user['name']}**.")
+    st.title("Hoje")
+    st.caption(f"Bem-vindo(a), {user['name']}.")
+
+    snapshot = dashboard_snapshot(user)
+    render_kpis(snapshot["kpis"])
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Pendências de assessoria")
+        render_item_list(snapshot["pending_sessions"], "Nenhuma ficha pendente no momento.")
+    with col2:
+        st.subheader("Bancas de hoje")
+        render_item_list(snapshot["today_boards"], "Nenhuma banca marcada para hoje.")
+
+    st.subheader("Próximas bancas")
+    render_item_list(snapshot["upcoming_boards"], "Nenhuma banca futura cadastrada.")
+
+    st.subheader("Acessos rápidos")
     if user["role"] == "professor":
-        st.page_link("pages/1_Professor.py", label="Abrir orientação", icon="📚")
-        st.page_link("pages/7_Bancas.py", label="Abrir bancas", icon="🏛️")
+        quick_col1, quick_col2 = st.columns(2)
+        quick_col1.page_link("pages/1_Professor.py", label="Abrir orientação", icon="📚")
+        quick_col2.page_link("pages/7_Bancas.py", label="Abrir bancas", icon="🏛️")
     else:
-        st.page_link("pages/2_Coordenacao.py", label="Abrir coordenação", icon="🏛️")
-        st.page_link("pages/5_Cadastros.py", label="Abrir cadastros", icon="📝")
-        st.page_link("pages/7_Bancas.py", label="Abrir bancas", icon="🏛️")
-        st.page_link("pages/3_Relatorios.py", label="Abrir relatórios", icon="📊")
+        quick_col1, quick_col2, quick_col3, quick_col4 = st.columns(4)
+        quick_col1.page_link("pages/2_Coordenacao.py", label="Coordenação", icon="🏛️")
+        quick_col2.page_link("pages/5_Cadastros.py", label="Cadastros", icon="📝")
+        quick_col3.page_link("pages/7_Bancas.py", label="Bancas", icon="🏛️")
+        quick_col4.page_link("pages/3_Relatorios.py", label="Relatórios", icon="📊")
     st.page_link("pages/4_Config.py", label="Configurações", icon="🔧")
 
 render_footer()

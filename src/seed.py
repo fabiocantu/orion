@@ -3,7 +3,8 @@
 from calendar import monthrange
 from datetime import date, timedelta
 
-from .database import execute, get_connection, init_db, query_one, using_postgres
+from .database import execute, get_connection, init_db, query, query_one, using_postgres
+from .security import hash_password
 
 
 def reset_database() -> None:
@@ -223,29 +224,33 @@ def seed_initial_data(force: bool = False) -> None:
     init_db()
     from .boards import seed_exam_criteria
 
-    if not force and query_one("SELECT id FROM users LIMIT 1"):
-        criteria_count = query_one("SELECT COUNT(*) AS total FROM criteria")
-        exam_criteria_count = query_one("SELECT COUNT(*) AS total FROM exam_criteria")
-        settings_count = query_one("SELECT COUNT(*) AS total FROM settings")
-        missing_sessions = query_one(
+    if not force:
+        counts = query_one(
             """
-            SELECT COUNT(*) AS total
-            FROM orientations
-            WHERE NOT EXISTS (
-                SELECT 1
-                FROM advisory_sessions
-                WHERE advisory_sessions.orientation_id = orientations.id
-            )
+            SELECT
+                (SELECT COUNT(*) FROM users) AS users_total,
+                (SELECT COUNT(*) FROM criteria) AS criteria_total,
+                (SELECT COUNT(*) FROM exam_criteria) AS exam_criteria_total,
+                (
+                    SELECT COUNT(*)
+                    FROM orientations
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM advisory_sessions
+                        WHERE advisory_sessions.orientation_id = orientations.id
+                    )
+                ) AS missing_sessions_total
             """
         )
-        if not criteria_count or int(criteria_count["total"]) == 0:
-            seed_criteria()
-        if not exam_criteria_count or int(exam_criteria_count["total"]) == 0:
-            seed_exam_criteria()
-        seed_settings()
-        if missing_sessions and int(missing_sessions["total"]) > 0:
-            ensure_sessions_for_all_orientations()
-        return
+        if counts and int(counts["users_total"] or 0) > 0:
+            if int(counts["criteria_total"] or 0) == 0:
+                seed_criteria()
+            if int(counts["exam_criteria_total"] or 0) == 0:
+                seed_exam_criteria()
+            seed_settings()
+            if int(counts["missing_sessions_total"] or 0) > 0:
+                ensure_sessions_for_all_orientations()
+            return
 
     users = [
         ("Coordenacao", "coord", "coord123", "coordenacao"),
@@ -256,7 +261,7 @@ def seed_initial_data(force: bool = False) -> None:
     for name, email, password, role in users:
         user_id = execute(
             "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)",
-            (name, email, password, role),
+            (name, email, hash_password(password), role),
         )
         if role == "professor":
             execute(
@@ -286,7 +291,7 @@ def seed_initial_data(force: bool = False) -> None:
     for index, student_id in enumerate(student_ids, start=1):
         execute("UPDATE students SET ra = ? WHERE id = ?", (f"202600{index}", student_id))
 
-    advisor_ids = [row["id"] for row in get_connection().execute("SELECT id FROM advisors ORDER BY id")]
+    advisor_ids = [row["id"] for row in query("SELECT id FROM advisors ORDER BY id")]
     assignments = [advisor_ids[0], advisor_ids[0], advisor_ids[1], advisor_ids[1], advisor_ids[2], advisor_ids[2]]
     for student_id, advisor_id in zip(student_ids, assignments):
         execute(
@@ -372,13 +377,13 @@ def official_criteria() -> list[tuple[str, str, str, str]]:
 
 
 def ensure_sessions_for_all_orientations() -> None:
-    rows = get_connection().execute(
+    rows = query(
         """
         SELECT orientations.id AS orientation_id, students.tfg_stage, students.year, students.semester
         FROM orientations
         JOIN students ON students.id = orientations.student_id
         """
-    ).fetchall()
+    )
     base_date = date(2026, 3, 10)
     for row in rows:
         total = 4 if row["tfg_stage"] == "TFG I" else 10

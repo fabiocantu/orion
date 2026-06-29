@@ -51,10 +51,6 @@ def get_database_backend() -> str:
     if value in {"sqlite", "neon"}:
         return value
 
-    runtime_value = str(_load_runtime_settings().get("database_backend", "")).strip().lower()
-    if runtime_value in {"sqlite", "neon"}:
-        return runtime_value
-
     secrets_value = str(_load_secrets_file().get("DATABASE_BACKEND", "")).strip().lower()
     if secrets_value in {"sqlite", "neon"}:
         return secrets_value
@@ -67,6 +63,13 @@ def get_database_backend() -> str:
             return streamlit_value
     except Exception:
         pass
+
+    if get_database_url().lower().startswith(("postgres://", "postgresql://")):
+        return "neon"
+
+    runtime_value = str(_load_runtime_settings().get("database_backend", "")).strip().lower()
+    if runtime_value in {"sqlite", "neon"}:
+        return runtime_value
 
     return "sqlite"
 
@@ -135,16 +138,30 @@ class CursorAdapter:
 
 
 class DatabaseConnection:
-    def __init__(self, conn: Any, backend: str) -> None:
+    def __init__(
+        self,
+        conn: Any,
+        backend: str,
+        context_manager: Any | None = None,
+        close_on_exit: bool = False,
+    ) -> None:
         self.conn = conn
         self.backend = backend
+        self._context_manager = context_manager
+        self._close_on_exit = close_on_exit
 
     def __enter__(self):
-        self.conn.__enter__()
+        if self._context_manager is None:
+            self.conn.__enter__()
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        return self.conn.__exit__(exc_type, exc, tb)
+        if self._context_manager is not None:
+            return self._context_manager.__exit__(exc_type, exc, tb)
+        result = self.conn.__exit__(exc_type, exc, tb)
+        if self._close_on_exit:
+            self.conn.close()
+        return result
 
     def commit(self) -> None:
         self.conn.commit()
@@ -190,6 +207,25 @@ def _add_returning_id(sql: str) -> tuple[str, bool]:
     return f"{stripped} RETURNING id", True
 
 
+@lru_cache(maxsize=1)
+def _get_postgres_pool(database_url: str) -> Any | None:
+    try:
+        from psycopg.rows import dict_row
+        from psycopg_pool import ConnectionPool
+    except ImportError:
+        return None
+
+    pool = ConnectionPool(
+        conninfo=database_url,
+        kwargs={"row_factory": dict_row},
+        min_size=1,
+        max_size=int(os.getenv("DATABASE_POOL_MAX_SIZE", "5")),
+        open=False,
+    )
+    pool.open()
+    return pool
+
+
 def get_connection() -> DatabaseConnection:
     ensure_directories()
     if get_database_backend() == "neon":
@@ -204,15 +240,20 @@ def get_connection() -> DatabaseConnection:
             raise RuntimeError(
                 "Para usar Neon/PostgreSQL, instale as dependencias com: py -m pip install -r requirements.txt"
             ) from exc
+        pool = _get_postgres_pool(get_database_url())
+        if pool is not None:
+            context_manager = pool.connection()
+            conn = context_manager.__enter__()
+            return DatabaseConnection(conn, "postgres", context_manager=context_manager)
         conn = psycopg.connect(get_database_url(), row_factory=dict_row)
-        return DatabaseConnection(conn, "postgres")
+        return DatabaseConnection(conn, "postgres", close_on_exit=True)
 
     conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA busy_timeout = 30000")
     conn.execute("PRAGMA journal_mode = WAL")
-    return DatabaseConnection(conn, "sqlite")
+    return DatabaseConnection(conn, "sqlite", close_on_exit=True)
 
 
 SQLITE_SCHEMA = """

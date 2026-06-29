@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 
 from .database import execute, query_one
+from .security import hash_password, is_password_hash, verify_password
 
 
 NAV_ITEMS = {
@@ -25,13 +26,19 @@ NAV_ITEMS = {
 
 def authenticate(email_or_name: str, password: str):
     value = email_or_name.strip().lower()
-    return query_one(
+    user = query_one(
         """
         SELECT * FROM users
-        WHERE (lower(email) = ? OR lower(name) = ?) AND password = ?
+        WHERE lower(email) = ? OR lower(name) = ?
         """,
-        (value, value, password),
+        (value, value),
     )
+    if not user or not verify_password(password, user["password"]):
+        return None
+    if not is_password_hash(user["password"]):
+        execute("UPDATE users SET password = ? WHERE id = ?", (hash_password(password), user["id"]))
+        user = query_one("SELECT * FROM users WHERE id = ?", (user["id"],))
+    return user
 
 
 def login_form():
@@ -71,11 +78,11 @@ def change_password(user_id: int, current_password: str, new_password: str) -> t
     user = query_one("SELECT * FROM users WHERE id = ?", (user_id,))
     if not user:
         return False, "Usuário não encontrado."
-    if user["password"] != current_password:
+    if not verify_password(current_password, user["password"]):
         return False, "Senha atual incorreta."
     if len(new_password.strip()) < 4:
         return False, "A nova senha deve ter pelo menos 4 caracteres."
-    execute("UPDATE users SET password = ? WHERE id = ?", (new_password.strip(), user_id))
+    execute("UPDATE users SET password = ? WHERE id = ?", (hash_password(new_password), user_id))
     return True, "Senha alterada com sucesso."
 
 

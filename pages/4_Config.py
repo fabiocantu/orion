@@ -9,6 +9,7 @@ from src.audit import list_audit
 from src.boards import public_exam_calendar_enabled, set_public_exam_calendar_enabled
 from src.database import DB_PATH, database_label, get_database_backend, init_db, query, set_database_backend
 from src.google_sheets import get_google_sheet_url, import_from_google_sheets, save_google_sheet_url
+from src.ui import apply_app_style, paginate_dataframe
 from src.seed import (
     clear_advisory_criteria,
     clear_advisory_records,
@@ -28,6 +29,7 @@ from src.utils import default_calendar_dates, get_advisory_calendar, rows_to_df,
 
 
 st.set_page_config(page_title="Configurações", layout="wide")
+apply_app_style()
 user = require_login()
 
 st.title("Configurações")
@@ -75,7 +77,8 @@ if user["role"] == "coordenacao":
 
     settings = query("SELECT key, value FROM settings ORDER BY key")
     st.subheader("Configurações básicas")
-    st.dataframe(rows_to_df(settings), width="stretch")
+    settings_df = rows_to_df(settings)
+    st.dataframe(paginate_dataframe(settings_df, "settings"), width="stretch")
 
     st.subheader("Calendário público de bancas")
     st.caption("Quando ligado, visitantes veem o calendário semanal de bancas antes do login.")
@@ -270,24 +273,40 @@ if user["role"] == "coordenacao":
         },
     ]
 
-    for index, option in enumerate(cleanup_options):
-        with st.expander(option["title"], expanded=False):
-            st.write(option["description"])
-            st.caption(option["note"])
-            confirmation = st.text_input(
-                f"Digite `{option['confirm']}` para confirmar",
-                key=f"cleanup_confirm_{index}",
-            )
-            if st.button(option["button"], disabled=confirmation.strip().lower() != option["confirm"], key=f"cleanup_button_{index}"):
-                try:
-                    option["action"]()
-                    st.success(f"{option['title']} concluído.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(str(exc))
+    restart_titles = {
+        "Reiniciar bancas do zero",
+        "Reiniciar orientações do zero",
+        "Limpar PDFs registrados",
+        "Limpar auditoria",
+    }
+    cleanup_groups = [
+        ("Reiniciar lançamentos", [item for item in cleanup_options if item["title"] in restart_titles]),
+        ("Excluir cadastros e estruturas", [item for item in cleanup_options if item["title"] not in restart_titles]),
+    ]
+
+    option_index = 0
+    for group_title, group_options in cleanup_groups:
+        st.markdown(f"**{group_title}**")
+        for option in group_options:
+            with st.expander(option["title"], expanded=False):
+                st.write(option["description"])
+                st.caption(option["note"])
+                confirmation = st.text_input(
+                    f"Digite `{option['confirm']}` para confirmar",
+                    key=f"cleanup_confirm_{option_index}",
+                )
+                if st.button(option["button"], disabled=confirmation.strip().lower() != option["confirm"], key=f"cleanup_button_{option_index}"):
+                    try:
+                        option["action"]()
+                        st.success(f"{option['title']} concluído.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+            option_index += 1
 
     st.subheader("Auditoria")
-    st.dataframe(rows_to_df(list_audit()), width="stretch")
+    audit_df = rows_to_df(list_audit())
+    st.dataframe(paginate_dataframe(audit_df, "audit"), width="stretch")
 
 render_footer()
 

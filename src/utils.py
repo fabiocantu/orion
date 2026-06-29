@@ -8,6 +8,7 @@ import pandas as pd
 
 from .audit import log_action
 from .database import execute, get_connection, query, query_one
+from .security import hash_password
 from .seed import ensure_sessions_for_all_orientations
 
 
@@ -47,7 +48,7 @@ def create_professor(name: str, email: str, password: str = "professor123") -> i
         else:
             user_id = conn.execute(
                 "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, 'professor')",
-                (name, email, password.strip() or "professor123"),
+                (name, email, hash_password(password.strip() or "professor123")),
             ).lastrowid
         advisor_id = conn.execute(
             "INSERT INTO advisors (user_id, name, email) VALUES (?, ?, ?)",

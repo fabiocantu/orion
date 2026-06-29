@@ -6,10 +6,12 @@ import streamlit as st
 
 from src.auth import render_footer
 from src.pdf_generator import generate_record_pdf, latest_pdf_for_record
+from src.ui import apply_app_style
 from src.utils import format_date_br, get_answers, get_student_by_ra, list_criteria, list_student_public_sessions
 
 
 st.set_page_config(page_title="Consulta do Aluno", page_icon="\U0001F393", layout="wide")
+apply_app_style()
 
 st.markdown(
     """

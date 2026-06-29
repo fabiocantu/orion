@@ -8,6 +8,7 @@ import streamlit as st
 from src.auth import render_footer, require_role
 from src.email_sender import send_record_email
 from src.pdf_generator import generate_record_pdf
+from src.ui import apply_app_style, render_item_list
 from src.utils import (
     ANSWERS,
     NOT_APPLICABLE,
@@ -27,6 +28,7 @@ from src.utils import (
 
 
 st.set_page_config(page_title="Orientação", layout="wide")
+apply_app_style()
 user = require_role("professor")
 
 
@@ -80,7 +82,14 @@ def cached_pdf_exports(record_id: int) -> list[dict]:
 
 
 def clear_read_cache() -> None:
-    st.cache_data.clear()
+    cached_advisor_by_user.clear()
+    cached_professor_students.clear()
+    cached_sessions.clear()
+    cached_student_context.clear()
+    cached_record.clear()
+    cached_criteria.clear()
+    cached_answers.clear()
+    cached_pdf_exports.clear()
 
 
 advisor = cached_advisor_by_user(user["id"])
@@ -95,6 +104,21 @@ students = cached_professor_students(user["id"])
 if not students:
     st.warning("Nenhum orientando vinculado.")
     st.stop()
+
+pending_items = []
+for row in students:
+    for item in cached_sessions(row["orientation_id"]):
+        if item["status"] in {"Pendente", "Rascunho"}:
+            pending_items.append(
+                {
+                    "title": f"{row['name']} - assessoria {item['session_number']}",
+                    "meta": f"{row['tfg_stage']} | {item['phase']} | prevista {format_date_br(item['planned_date'])}",
+                    "status": item["status"],
+                }
+            )
+            break
+st.subheader("Minhas pendências")
+render_item_list(pending_items[:8], "Nenhuma ficha pendente para seus orientandos.")
 
 student_map = {f"{row['name']} - {row['tfg_stage']}": row for row in students}
 selected_label = st.selectbox("Orientando", list(student_map.keys()))

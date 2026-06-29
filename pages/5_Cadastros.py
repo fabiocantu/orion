@@ -4,6 +4,7 @@ import pandas as pd
 import streamlit as st
 
 from src.auth import render_footer, require_role
+from src.ui import apply_app_style, paginate_dataframe, render_kpis
 from src.utils import (
     create_criterion,
     create_orientation,
@@ -31,6 +32,7 @@ from src.utils import (
 
 
 st.set_page_config(page_title="Cadastros", layout="wide")
+apply_app_style()
 user = require_role("coordenacao")
 
 
@@ -69,10 +71,24 @@ def cached_criteria() -> list[dict]:
 
 
 def clear_read_cache() -> None:
-    st.cache_data.clear()
+    cached_advisors.clear()
+    cached_all_students.clear()
+    cached_students_simple.clear()
+    cached_students_without_orientation.clear()
+    cached_orientations.clear()
+    cached_criteria.clear()
 
 
 st.title("Cadastros")
+render_kpis(
+    [
+        ("Professores", len(cached_advisors()), "orientadores e convidados"),
+        ("Alunos", len(cached_students_simple()), "cadastrados"),
+        ("Sem orientação", len(cached_students_without_orientation()), "aguardando vínculo"),
+        ("Vínculos", len(cached_orientations()), "orientações ativas"),
+        ("Critérios", len(cached_criteria()), "rubricas de assessoria"),
+    ]
+)
 section = st.radio(
     "Área",
     ["Professores", "Alunos", "Orientações", "Importação em lote", "Critérios"],
@@ -98,7 +114,8 @@ if section == "Professores":
 
     st.subheader("Professores e convidados cadastrados")
     advisors = cached_advisors()
-    st.dataframe(rows_to_df(advisors), width="stretch")
+    advisors_df = rows_to_df(advisors)
+    st.dataframe(paginate_dataframe(advisors_df, "advisors"), width="stretch")
 
     st.subheader("Excluir professor ou convidado")
     if advisors:
@@ -137,7 +154,8 @@ elif section == "Alunos":
 
     st.subheader("Alunos cadastrados")
     all_students = cached_students_simple()
-    st.dataframe(rows_to_df(cached_all_students()), width="stretch")
+    students_df = rows_to_df(cached_all_students())
+    st.dataframe(paginate_dataframe(students_df, "students"), width="stretch")
 
     st.subheader("Atualizar RA do aluno")
     if all_students:
@@ -214,7 +232,8 @@ elif section == "Orientações":
             st.rerun()
 
     st.subheader("Alunos sem orientação")
-    st.dataframe(rows_to_df(students), width="stretch")
+    students_without_orientation_df = rows_to_df(students)
+    st.dataframe(paginate_dataframe(students_without_orientation_df, "students_without_orientation"), width="stretch")
 
     st.subheader("Excluir vínculo de orientação")
     orientations = cached_orientations()
@@ -369,7 +388,8 @@ elif section == "Critérios":
 
     criteria = cached_criteria()
     st.subheader("Critérios cadastrados")
-    st.dataframe(rows_to_df(criteria), width="stretch")
+    criteria_df = rows_to_df(criteria)
+    st.dataframe(paginate_dataframe(criteria_df, "advisory_criteria"), width="stretch")
 
     st.subheader("Editar critério")
     if criteria:

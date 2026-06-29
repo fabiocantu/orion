@@ -4,10 +4,12 @@ import streamlit as st
 
 from src.auth import render_footer, require_login
 from src.database import query
+from src.ui import apply_app_style, paginate_dataframe
 from src.utils import rows_to_df
 
 
 st.set_page_config(page_title="Relatórios", layout="wide")
+apply_app_style()
 user = require_login()
 
 
@@ -131,7 +133,7 @@ st.dataframe(rows_to_df(evaluations), width="stretch")
 detail = cached_detail(stage, phase)
 df = rows_to_df(detail)
 st.subheader("Relatório detalhado")
-st.dataframe(df, width="stretch")
+st.dataframe(paginate_dataframe(df, "report_detail"), width="stretch")
 st.download_button("Exportar CSV", df.to_csv(index=False).encode("utf-8-sig"), "relatorio_tfg.csv", "text/csv")
 
 render_footer()
