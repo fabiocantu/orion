@@ -1,0 +1,7 @@
+﻿streamlit
+pandas
+reportlab
+python-dotenv
+openpyxl
+psycopg[binary]
+
