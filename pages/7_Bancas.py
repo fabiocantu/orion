@@ -36,6 +36,7 @@ from src.boards import (
     update_exam_criterion,
 )
 from src.pdf_generator import generate_board_pdf
+from src.timezone import local_time_from_timestamp, today_local
 from src.ui import apply_app_style, paginate_dataframe, render_item_list
 from src.utils import create_professor, format_date_br, list_advisors, list_all_students, rows_to_df
 
@@ -209,7 +210,7 @@ def build_batch_template(students: list[dict]) -> pd.DataFrame:
             {
                 "aluno": sample_student["name"],
                 "etapa": "Pré-Banca",
-                "data": date.today().strftime("%d/%m/%Y"),
+                "data": today_local().strftime("%d/%m/%Y"),
                 "horario": "19:00",
                 "local": "Sala 1",
                 "orientador": sample_student.get("advisor_name", ""),
@@ -463,7 +464,7 @@ if section == "Minhas bancas":
                                 st.warning(f"Não consegui salvar o rascunho das notas: {exc}")
                     last_grades_autosave = st.session_state.get(saved_grades_at_key)
                     if last_grades_autosave:
-                        saved_time = time.strftime("%H:%M:%S", time.localtime(float(last_grades_autosave)))
+                        saved_time = local_time_from_timestamp(float(last_grades_autosave)).strftime("%H:%M:%S")
                         st.caption(f"Notas salvas automaticamente às {saved_time}.")
 
                     if st.button("Salvar notas", key=f"save_grades_{board['id']}_{advisor_id}"):
@@ -506,7 +507,7 @@ if section == "Minhas bancas":
                             st.warning(f"Não consegui salvar o rascunho da ata: {exc}")
                 last_minutes_autosave = st.session_state.get(saved_minutes_at_key)
                 if last_minutes_autosave:
-                    saved_time = time.strftime("%H:%M:%S", time.localtime(float(last_minutes_autosave)))
+                    saved_time = local_time_from_timestamp(float(last_minutes_autosave)).strftime("%H:%M:%S")
                     st.caption(f"Ata salva automaticamente às {saved_time}.")
                 submitted = st.button("Salvar ata", key=f"save_minutes_{board['id']}")
                 if submitted:
@@ -553,7 +554,7 @@ if section == "Minhas bancas":
                 st.dataframe(summary, width="stretch", hide_index=True)
 
 elif section == "Calendário":
-    reference = st.date_input("Semana de referência", value=date.today(), format="DD/MM/YYYY")
+    reference = st.date_input("Semana de referência", value=today_local(), format="DD/MM/YYYY")
     start = reference - timedelta(days=reference.weekday())
     end = start + timedelta(days=6)
     rows = []
@@ -678,7 +679,7 @@ elif is_coord and section == "Gerenciar":
             selected_student_label = st.selectbox("Aluno", list(student_options.keys()))
             student = student_options[selected_student_label]
             stage = st.selectbox("Etapa da banca", EXAM_STAGES)
-            scheduled_date = st.date_input("Data", value=date.today(), format="DD/MM/YYYY")
+            scheduled_date = st.date_input("Data", value=today_local(), format="DD/MM/YYYY")
             scheduled_time = st.text_input("Horário", placeholder="19:00")
             location = st.text_input("Local", placeholder="Sala, link ou observação")
 

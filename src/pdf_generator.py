@@ -11,6 +11,7 @@ from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Tabl
 
 from .boards import board_grade_summary, board_partial_grade, get_exam_board, get_minutes, list_board_members, list_exam_criteria, list_grades
 from .database import PDF_DIR, execute, query
+from .timezone import now_local
 from .utils import format_date_br, get_answers, get_record, get_student_context_by_session, list_criteria
 
 
@@ -25,7 +26,7 @@ def generate_record_pdf(session_id: int) -> Path:
     criteria_rows = list_criteria(context["tfg_stage"], context["phase"])
     answers = get_answers(record["id"])
 
-    filename = f"ficha_tfg_sessao_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    filename = f"ficha_tfg_sessao_{session_id}_{now_local().strftime('%Y%m%d_%H%M%S')}.pdf"
     path = PDF_DIR / filename
     doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=1.5 * cm, leftMargin=1.5 * cm, topMargin=1.2 * cm, bottomMargin=1.2 * cm)
     styles = _styles()
@@ -43,7 +44,7 @@ def generate_record_pdf(session_id: int) -> Path:
         ["Assessoria", _p(str(context["session_number"]), styles["SmallWrap"]), "Orientador", _p(context["advisor_name"], styles["SmallWrap"])],
         ["Aluno", _p(context["name"], styles["SmallWrap"]), "E-mail", _p(context["email"] or "", styles["SmallWrap"])],
         ["Tema", _p(context["theme"], styles["SmallWrap"]), "Data prevista", _p(format_date_br(context["planned_date"]), styles["SmallWrap"])],
-        ["Data realizada", _p(format_date_br(context["actual_date"], ""), styles["SmallWrap"]), "Geração", _p(datetime.now().strftime("%d/%m/%Y %H:%M"), styles["SmallWrap"])],
+        ["Data realizada", _p(format_date_br(context["actual_date"], ""), styles["SmallWrap"]), "Geração", _p(now_local().strftime("%d/%m/%Y %H:%M"), styles["SmallWrap"])],
     ]
     story.append(_table(info, [3 * cm, 6.8 * cm, 3 * cm, 4.2 * cm]))
     story.append(Spacer(1, 10))
@@ -88,7 +89,7 @@ def generate_board_pdf(board_id: int) -> Path:
     final_grade_row = board_partial_grade(board_id)
     final_grade = dict(final_grade_row) if final_grade_row else {"average_grade": None, "grades_count": 0}
 
-    filename = f"relatorio_banca_{board_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    filename = f"relatorio_banca_{board_id}_{now_local().strftime('%Y%m%d_%H%M%S')}.pdf"
     path = PDF_DIR / filename
     doc = SimpleDocTemplate(str(path), pagesize=A4, rightMargin=1.5 * cm, leftMargin=1.5 * cm, topMargin=1.2 * cm, bottomMargin=1.2 * cm)
     styles = _styles()
@@ -108,7 +109,7 @@ def generate_board_pdf(board_id: int) -> Path:
         ["Aluno", _p(board["student_name"], styles["SmallWrap"]), "Etapa", _p(board["stage"], styles["SmallWrap"])],
         ["TFG", _p(board["tfg_stage"], styles["SmallWrap"]), "Data da banca", _p(scheduled, styles["SmallWrap"])],
         ["Tema", _p(board["theme"], styles["SmallWrap"]), "Local", _p(board["location"] or "", styles["SmallWrap"])],
-        ["Status", _p(board["status"], styles["SmallWrap"]), "Geração", _p(datetime.now().strftime("%d/%m/%Y %H:%M"), styles["SmallWrap"])],
+        ["Status", _p(board["status"], styles["SmallWrap"]), "Geração", _p(now_local().strftime("%d/%m/%Y %H:%M"), styles["SmallWrap"])],
     ]
     story.append(_table(info, [3 * cm, 6.8 * cm, 3 * cm, 4.2 * cm]))
     story.append(Spacer(1, 10))

@@ -10,6 +10,7 @@ from .audit import log_action
 from .database import execute, get_connection, query, query_one
 from .security import hash_password
 from .seed import ensure_sessions_for_all_orientations
+from .timezone import today_local
 
 
 ANSWERS = ["Sim", "Não", "Parcial"]
@@ -765,7 +766,7 @@ def save_record(
 ) -> int:
     old_record = get_record(session_id)
     old_snapshot = snapshot_record(session_id) if old_record else None
-    actual_date = payload.get("actual_date") or date.today().isoformat()
+    actual_date = payload.get("actual_date") or today_local().isoformat()
     with get_connection() as conn:
         if old_record:
             record_id = old_record["id"]

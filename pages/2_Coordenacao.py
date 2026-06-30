@@ -187,7 +187,7 @@ defaults = {
     pending_key: record["pending_issues"] if record else "",
     final_eval_key: record["final_evaluation"] if record and record["final_evaluation"] in ANSWERS else "Sim",
     final_comment_key: record["final_comment"] if record else "",
-    actual_date_key: date.fromisoformat(context["actual_date"]) if context["actual_date"] else date.today(),
+    actual_date_key: date.fromisoformat(context["actual_date"]) if context["actual_date"] else today_local(),
     justification_key: "",
 }
 for key, value in defaults.items():

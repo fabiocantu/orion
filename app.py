@@ -9,6 +9,7 @@ from src.auth import login_form, render_footer, render_sidebar_navigation
 from src.boards import list_public_exam_boards, public_exam_calendar_enabled
 from src.dashboard import dashboard_snapshot
 from src.seed import seed_initial_data
+from src.timezone import now_local, today_local
 from src.ui import apply_app_style, render_item_list, render_kpis
 from src.utils import format_date_br
 
@@ -40,7 +41,7 @@ def cached_public_exam_boards(start_date: date, end_date: date) -> list[dict]:
 
 def render_public_exam_calendar() -> None:
     st.subheader("Calendário público de bancas")
-    reference = st.date_input("Semana de referência", value=date.today(), format="DD/MM/YYYY", key="public_exam_week")
+    reference = st.date_input("Semana de referência", value=today_local(), format="DD/MM/YYYY", key="public_exam_week")
     start = reference - timedelta(days=reference.weekday())
     end = start + timedelta(days=6)
     boards = cached_public_exam_boards(start, end)
@@ -58,7 +59,7 @@ def render_public_exam_calendar() -> None:
             return None
 
     def public_status(board_date: date, board_time: time | None) -> str:
-        now = datetime.now()
+        now = now_local().replace(tzinfo=None)
         if board_time is None:
             if board_date < now.date():
                 return "Finalizada"
@@ -123,7 +124,7 @@ def render_public_exam_calendar() -> None:
     df = pd.DataFrame(rows).drop(columns=["Data ISO", "Data completa"])
 
     if view_mode == "Cards":
-        today_rows = [row for row in rows if row["Data ISO"] == date.today().isoformat()]
+        today_rows = [row for row in rows if row["Data ISO"] == today_local().isoformat()]
         render_item_list(
             [
                 {

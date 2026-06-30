@@ -9,6 +9,7 @@ import streamlit as st
 from src.auth import render_footer, require_role
 from src.email_sender import send_record_email
 from src.pdf_generator import generate_record_pdf
+from src.timezone import local_time_from_timestamp, today_local
 from src.ui import apply_app_style, render_item_list
 from src.utils import (
     ANSWERS,
@@ -162,7 +163,7 @@ defaults = {
     pending_key: record["pending_issues"] if record else "",
     final_eval_key: record["final_evaluation"] if record and record["final_evaluation"] in ANSWERS else "Sim",
     final_comment_key: record["final_comment"] if record else "",
-    actual_date_key: date.fromisoformat(context["actual_date"]) if context["actual_date"] else date.today(),
+    actual_date_key: date.fromisoformat(context["actual_date"]) if context["actual_date"] else today_local(),
 }
 for key, value in defaults.items():
     if key not in st.session_state:
@@ -251,7 +252,7 @@ if not disabled_record and draft_snapshot != st.session_state[initial_draft_key]
 
 last_autosave = st.session_state.get(saved_at_key)
 if last_autosave and not disabled_record:
-    saved_time = time.strftime("%H:%M:%S", time.localtime(float(last_autosave)))
+    saved_time = local_time_from_timestamp(float(last_autosave)).strftime("%H:%M:%S")
     st.caption(f"Rascunho salvo automaticamente às {saved_time}.")
 
 st.markdown("**Ações da ficha**")

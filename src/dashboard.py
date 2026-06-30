@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date
+
+from .timezone import today_local
 from typing import Any
 
 from .boards import advisor_id_for_user
@@ -18,7 +20,7 @@ def dashboard_snapshot(user: dict) -> dict:
     advisor_id = advisor_id_for_user(user["id"]) if user["role"] == "professor" else None
     session_filter, session_params = _session_scope(user, advisor_id)
     board_filter, board_params = _board_scope(user, advisor_id)
-    today = date.today().isoformat()
+    today = today_local().isoformat()
 
     students_total = _total(
         query_one(
@@ -131,7 +133,7 @@ def pending_advisory_sessions(user: dict, advisor_id: int | None, limit: int = 8
 
 def dashboard_boards(user: dict, advisor_id: int | None, only_today: bool, limit: int = 8) -> list[dict]:
     where_sql, params = _board_scope(user, advisor_id)
-    today = date.today().isoformat()
+    today = today_local().isoformat()
     date_filter = "exam_boards.scheduled_date = ?" if only_today else "exam_boards.scheduled_date >= ?"
     rows = query(
         f"""
