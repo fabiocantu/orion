@@ -64,6 +64,18 @@ def render_public_exam_calendar() -> None:
             return "Em andamento"
         return "Finalizada"
 
+    def format_weekday_date(value: date) -> str:
+        weekdays = [
+            "Segunda-feira",
+            "Terça-feira",
+            "Quarta-feira",
+            "Quinta-feira",
+            "Sexta-feira",
+            "Sábado",
+            "Domingo",
+        ]
+        return f"{weekdays[value.weekday()]}, dia {value.strftime('%d/%m/%Y')}"
+
     rows = []
     for board in boards:
         try:
@@ -75,6 +87,7 @@ def render_public_exam_calendar() -> None:
             {
                 "Status": public_status(board_date, board_time),
                 "Data": format_date_br(board["scheduled_date"]),
+                "Data completa": format_weekday_date(board_date),
                 "Horário": board["scheduled_time"] or "-",
                 "Etapa": board["stage"],
                 "Aluno": board["student_name"],
@@ -97,14 +110,14 @@ def render_public_exam_calendar() -> None:
         horizontal=True,
         key="public_exam_calendar_view",
     )
-    df = pd.DataFrame(rows).drop(columns=["Data ISO"])
+    df = pd.DataFrame(rows).drop(columns=["Data ISO", "Data completa"])
 
     if view_mode == "Cards":
         today_rows = [row for row in rows if row["Data ISO"] == date.today().isoformat()]
         render_item_list(
             [
                 {
-                    "title": f"{row['Horário']} | {row['Etapa']} | {row['Aluno']}",
+                    "title": f"{row['Data completa']} | {row['Horário']} | {row['Etapa']} | {row['Aluno']}",
                     "meta": f"Tema: {row['Tema']} | Local: {row['Local']} | Orientador: {row['Orientador']} | Avaliadores: {row['Avaliadores']}",
                     "status": row["Status"],
                 }
