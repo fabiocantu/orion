@@ -675,23 +675,54 @@ elif is_coord and section == "Gerenciar":
         st.subheader("Criar ou atualizar uma banca")
         student_options = {f"{student['name']} | {student['tfg_stage']} | {student['advisor_name']}": student for student in students}
         advisor_labels = list(advisor_map.keys())
+        boards_for_form = cached_boards("coord", None)
+        board_options = {"Nova banca": None}
+        board_options.update({board_label(board): board for board in boards_for_form})
+        selected_board_label = st.selectbox("Banca para editar", list(board_options.keys()), key="edit_board_select")
+        editing_board = board_options[selected_board_label]
+        editing_members = cached_board_members(editing_board["id"]) if editing_board else []
+        editing_orientador_id = next((member["advisor_id"] for member in editing_members if member["can_record_minutes"]), None)
+        editing_evaluator_ids = [member["advisor_id"] for member in editing_members if member["can_grade"]]
+
+        student_labels = list(student_options.keys())
+        default_student_index = 0
+        default_stage_index = 0
+        default_date = today_local()
+        default_time = ""
+        default_location = ""
+        if editing_board:
+            for index, label in enumerate(student_labels):
+                if int(student_options[label]["id"]) == int(editing_board["student_id"]):
+                    default_student_index = index
+                    break
+            default_stage_index = EXAM_STAGES.index(editing_board["stage"]) if editing_board["stage"] in EXAM_STAGES else 0
+            try:
+                default_date = date.fromisoformat(str(editing_board["scheduled_date"])[:10])
+            except ValueError:
+                default_date = today_local()
+            default_time = editing_board["scheduled_time"] or ""
+            default_location = editing_board["location"] or ""
+
         with st.form("exam_board_form"):
-            selected_student_label = st.selectbox("Aluno", list(student_options.keys()))
+            selected_student_label = st.selectbox("Aluno", student_labels, index=default_student_index)
             student = student_options[selected_student_label]
-            stage = st.selectbox("Etapa da banca", EXAM_STAGES)
-            scheduled_date = st.date_input("Data", value=today_local(), format="DD/MM/YYYY")
-            scheduled_time = st.text_input("Horário", placeholder="19:00")
-            location = st.text_input("Local", placeholder="Sala, link ou observação")
+            stage = st.selectbox("Etapa da banca", EXAM_STAGES, index=default_stage_index)
+            scheduled_date = st.date_input("Data", value=default_date, format="DD/MM/YYYY")
+            scheduled_time = st.text_input("Horário", value=default_time, placeholder="19:00")
+            location = st.text_input("Local", value=default_location, placeholder="Sala, link ou observação")
 
             default_orientador_index = 0
+            target_orientador_id = editing_orientador_id or student["advisor_id"]
             for index, label in enumerate(advisor_labels):
-                if advisor_map[label] == student["advisor_id"]:
+                if advisor_map[label] == target_orientador_id:
                     default_orientador_index = index
                     break
             orientador_label = st.selectbox("Orientador responsável pela ata", advisor_labels, index=default_orientador_index)
+            default_evaluators = [label for label in advisor_labels if advisor_map[label] in editing_evaluator_ids]
             evaluator_labels = st.multiselect(
                 "Avaliadores",
                 advisor_labels,
+                default=default_evaluators,
                 help="Convidados externos devem ser cadastrados como professores em Cadastros ou criados pelo importador em lote.",
             )
             submitted = st.form_submit_button("Salvar banca")

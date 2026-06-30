@@ -7,7 +7,6 @@ import streamlit as st
 
 from src.auth import render_footer, require_role
 from src.database import query
-from src.email_sender import send_record_email
 from src.pdf_generator import generate_record_pdf
 from src.ui import apply_app_style
 from src.utils import (
@@ -101,9 +100,9 @@ def clear_read_cache() -> None:
     cached_pdf_exports.clear()
 
 st.title("Coordenação")
-if st.session_state.pop("celebrate_record_sent", False):
+if st.session_state.pop("record_finalized", False):
     st.balloons()
-    st.success(st.session_state.pop("celebrate_record_message", "Ficha finalizada com sucesso."))
+    st.success(st.session_state.pop("record_finalized_message", "Ficha finalizada com sucesso."))
 
 advisors = cached_advisors()
 advisor_options = {"Todos": None} | {a["name"]: a["id"] for a in advisors}
@@ -243,11 +242,11 @@ final_evaluation = st.selectbox("Avaliação final", ANSWERS, key=final_eval_key
 justification = st.text_area("Justificativa da edição", key=justification_key, help="Obrigatória quando a ficha já existe.")
 
 st.markdown("**Ações da ficha**")
-save_col, send_col = st.columns(2)
-submitted = save_col.button("Salvar")
-submitted_send = send_col.button("Salvar e enviar")
+save_col, finish_col = st.columns(2)
+submitted = save_col.button("Salvar rascunho")
+submitted_finish = finish_col.button("Finalizar ficha")
 
-if submitted or submitted_send:
+if submitted or submitted_finish:
     if record and not justification.strip():
         st.error("Informe justificativa para editar ficha já preenchida.")
     else:
@@ -270,21 +269,19 @@ if submitted or submitted_send:
                 },
                 user,
                 justification,
-                lock_record=bool(submitted_send or context["locked"]),
+                lock_record=bool(submitted_finish or context["locked"]),
             )
-            if submitted_send:
-                pdf_path = generate_record_pdf(session["id"])
-                result = send_record_email(context["email"] or "sem-email", "Ficha de Assessoria de TFG", str(pdf_path))
-                st.session_state["celebrate_record_sent"] = True
-                st.session_state["celebrate_record_message"] = f"Ficha salva e envio simulado. {result['message']}"
+            if submitted_finish:
+                st.session_state["record_finalized"] = True
+                st.session_state["record_finalized_message"] = "Ficha finalizada com sucesso."
             else:
-                st.success("Ficha salva.")
+                st.success("Rascunho salvo.")
             clear_read_cache()
             st.rerun()
 
 record = cached_record(session["id"])
 if record:
-    col_pdf, col_download, col_email = st.columns(3)
+    col_pdf, col_download = st.columns(2)
     if col_pdf.button("Gerar PDF"):
         pdf_path = generate_record_pdf(session["id"])
         st.success(f"PDF gerado: {pdf_path.name}")
@@ -295,9 +292,6 @@ if record:
         latest = Path(exports[0]["file_path"])
         if latest.exists():
             col_download.download_button("Baixar PDF", latest.read_bytes(), file_name=latest.name, mime="application/pdf")
-    if col_email.button("Simular envio por e-mail"):
-        result = send_record_email(context["email"] or "sem-email", "Ficha de Assessoria de TFG")
-        st.info(result["message"])
 
 st.subheader("Histórico do aluno")
 st.dataframe(
