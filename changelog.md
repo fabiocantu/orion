@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-06-30
+
+- Adicionado autosave de rascunhos nas fichas de assessoria do professor:
+  - salva alterações como `Rascunho` sem bloquear a ficha;
+  - evita gravação a cada tecla usando intervalo mínimo.
+- Adicionado autosave em bancas:
+  - notas salvas automaticamente quando alteradas;
+  - ata salva automaticamente quando preenchida;
+  - mantidos os botões manuais de salvar.
+- Corrigidos problemas de encoding/mojibake em arquivos tocados, preservando textos com acentos em UTF-8.
+- Melhorada a tela inicial pública de bancas:
+  - adicionada alternância entre visualização em Cards e Tabela;
+  - Cards mostram apenas bancas de hoje;
+  - Tabela mostra a semana selecionada;
+  - Cards exibem dia da semana e data completa;
+  - ambas as visualizações mostram orientador e avaliadores.
+- Otimizada a consulta pública de bancas:
+  - orientador e avaliadores retornam na mesma consulta;
+  - adicionado cache curto para reduzir chamadas ao Neon;
+  - cache é limpo ao salvar, importar ou excluir bancas e ao alterar configuração do calendário público.
+- Aumentada a resiliência da conexão com Neon/PostgreSQL:
+  - pool passa a checar conexão antes de entregar;
+  - leituras simples tentam reconectar uma vez em `psycopg.OperationalError`.
+- Adicionada consulta pública de atas de banca por RA:
+  - aluno pode ver bancas com ata registrada;
+  - aluno pode gerar e baixar o PDF da ata/relatório da banca;
+  - acesso segue restrito ao aluno localizado pelo RA.
+- Mantido o fluxo de reset de senha da coordenação por script, com orientação para apontar explicitamente para Neon antes de executar.
+
 ## 2026-06-27
 
 - Criados arquivos de continuidade:
