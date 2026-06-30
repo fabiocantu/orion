@@ -8,6 +8,7 @@ import streamlit as st
 from src.auth import render_footer, require_role
 from src.database import query
 from src.pdf_generator import generate_record_pdf
+from src.timezone import today_local
 from src.ui import apply_app_style
 from src.utils import (
     ANSWERS,
