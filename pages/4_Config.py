@@ -88,6 +88,7 @@ if user["role"] == "coordenacao":
     )
     if st.button("Salvar calendário público"):
         set_public_exam_calendar_enabled(public_calendar)
+        st.cache_data.clear()
         if public_calendar:
             st.success("Calendário público de bancas ativado.")
         else:

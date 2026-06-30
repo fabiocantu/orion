@@ -28,12 +28,22 @@ def bootstrap_app() -> bool:
 bootstrap_app()
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def cached_public_exam_calendar_enabled() -> bool:
+    return public_exam_calendar_enabled()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def cached_public_exam_boards(start_date: date, end_date: date) -> list[dict]:
+    return [dict(row) for row in list_public_exam_boards(start_date, end_date)]
+
+
 def render_public_exam_calendar() -> None:
     st.subheader("Calendário público de bancas")
     reference = st.date_input("Semana de referência", value=date.today(), format="DD/MM/YYYY", key="public_exam_week")
     start = reference - timedelta(days=reference.weekday())
     end = start + timedelta(days=6)
-    boards = list_public_exam_boards(start, end)
+    boards = cached_public_exam_boards(start, end)
 
     def parse_board_time(value: object) -> time | None:
         text = str(value or "").strip().lower()
@@ -150,7 +160,7 @@ if not user:
         """,
         unsafe_allow_html=True,
     )
-    if public_exam_calendar_enabled():
+    if cached_public_exam_calendar_enabled():
         render_public_exam_calendar()
         st.divider()
     st.info("Entre para acessar o sistema.")

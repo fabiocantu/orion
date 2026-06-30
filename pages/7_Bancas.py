@@ -121,6 +121,7 @@ def clear_read_cache() -> None:
     cached_results.clear()
     cached_students.clear()
     cached_advisors.clear()
+    st.cache_data.clear()
 
 
 bootstrap_boards_page()

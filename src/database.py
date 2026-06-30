@@ -220,6 +220,8 @@ def _get_postgres_pool(database_url: str) -> Any | None:
         kwargs={"row_factory": dict_row},
         min_size=1,
         max_size=int(os.getenv("DATABASE_POOL_MAX_SIZE", "5")),
+        max_idle=float(os.getenv("DATABASE_POOL_MAX_IDLE", "60")),
+        check=ConnectionPool.check_connection,
         open=False,
     )
     pool.open()
@@ -515,14 +517,55 @@ def _migrate_answer_scale(conn: DatabaseConnection) -> None:
     )
 
 
+def _is_postgres_operational_error(exc: Exception) -> bool:
+    try:
+        import psycopg
+    except ImportError:
+        return False
+    return isinstance(exc, psycopg.OperationalError)
+
+
+def _reset_postgres_pool() -> None:
+    if not using_postgres():
+        return
+    try:
+        pool = _get_postgres_pool(get_database_url())
+    except Exception:
+        pool = None
+    if pool is not None:
+        try:
+            pool.close(timeout=1)
+        except TypeError:
+            pool.close()
+        except Exception:
+            pass
+    _get_postgres_pool.cache_clear()
+
+
+def _read_with_reconnect(operation):
+    try:
+        return operation()
+    except Exception as exc:
+        if get_database_backend() == "neon" and _is_postgres_operational_error(exc):
+            _reset_postgres_pool()
+            return operation()
+        raise
+
+
 def query(sql: str, params: tuple = ()) -> list[Any]:
-    with get_connection() as conn:
-        return conn.execute(sql, params).fetchall()
+    def operation():
+        with get_connection() as conn:
+            return conn.execute(sql, params).fetchall()
+
+    return _read_with_reconnect(operation)
 
 
 def query_one(sql: str, params: tuple = ()) -> Any | None:
-    with get_connection() as conn:
-        return conn.execute(sql, params).fetchone()
+    def operation():
+        with get_connection() as conn:
+            return conn.execute(sql, params).fetchone()
+
+    return _read_with_reconnect(operation)
 
 
 def execute(sql: str, params: tuple = ()) -> int:
