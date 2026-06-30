@@ -5,7 +5,7 @@ from datetime import date
 import pandas as pd
 
 from .audit import log_action
-from .database import execute, get_connection, query, query_one
+from .database import execute, get_connection, query, query_one, using_postgres
 
 
 EXAM_STAGES = ["Pré-Banca", "Banca Final", "Plano de Ocupação"]
@@ -520,19 +520,35 @@ def set_public_exam_calendar_enabled(enabled: bool) -> None:
 
 
 def list_public_exam_boards(start_date: date, end_date: date):
-    return query(
+    if using_postgres():
+        members_sql = """
+            COALESCE(STRING_AGG(advisors.name, ', ' ORDER BY advisors.name)
+                     FILTER (WHERE exam_board_members.can_record_minutes = 1), '-') AS orientador,
+            COALESCE(STRING_AGG(advisors.name, ', ' ORDER BY advisors.name)
+                     FILTER (WHERE exam_board_members.can_grade = 1), '-') AS avaliadores
         """
+    else:
+        members_sql = """
+            COALESCE(GROUP_CONCAT(CASE WHEN exam_board_members.can_record_minutes = 1 THEN advisors.name END, ', '), '-') AS orientador,
+            COALESCE(GROUP_CONCAT(CASE WHEN exam_board_members.can_grade = 1 THEN advisors.name END, ', '), '-') AS avaliadores
+        """
+
+    return query(
+        f"""
         SELECT exam_boards.*, students.name AS student_name, students.theme,
-               students.tfg_stage
+               students.tfg_stage,
+               {members_sql}
         FROM exam_boards
         JOIN students ON students.id = exam_boards.student_id
+        LEFT JOIN exam_board_members ON exam_board_members.board_id = exam_boards.id
+        LEFT JOIN advisors ON advisors.id = exam_board_members.advisor_id
         WHERE exam_boards.scheduled_date >= ?
           AND exam_boards.scheduled_date <= ?
+        GROUP BY exam_boards.id, students.name, students.theme, students.tfg_stage
         ORDER BY exam_boards.scheduled_date, exam_boards.scheduled_time, students.name
         """,
         (start_date.isoformat(), end_date.isoformat()),
     )
-
 
 def advisor_id_for_user(user_id: int) -> int | None:
     row = query_one("SELECT id FROM advisors WHERE user_id = ?", (user_id,))

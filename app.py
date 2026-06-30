@@ -80,6 +80,9 @@ def render_public_exam_calendar() -> None:
                 "Aluno": board["student_name"],
                 "Tema": board["theme"],
                 "Local": board["location"] or "-",
+                "Orientador": board["orientador"] or "-",
+                "Avaliadores": board["avaliadores"] or "-",
+                "Data ISO": board_date.isoformat(),
             }
         )
 
@@ -94,19 +97,20 @@ def render_public_exam_calendar() -> None:
         horizontal=True,
         key="public_exam_calendar_view",
     )
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows).drop(columns=["Data ISO"])
 
     if view_mode == "Cards":
+        today_rows = [row for row in rows if row["Data ISO"] == date.today().isoformat()]
         render_item_list(
             [
                 {
-                    "title": f"{row['Data']} {row['Horário']} | {row['Etapa']}",
-                    "meta": f"{row['Aluno']} | {row['Tema']} | {row['Local']}",
+                    "title": f"{row['Horário']} | {row['Etapa']} | {row['Aluno']}",
+                    "meta": f"Tema: {row['Tema']} | Local: {row['Local']} | Orientador: {row['Orientador']} | Avaliadores: {row['Avaliadores']}",
                     "status": row["Status"],
                 }
-                for row in rows
+                for row in today_rows
             ],
-            "Nenhuma banca pública encontrada nesta semana.",
+            "Nenhuma banca agendada para hoje.",
         )
         return
 
