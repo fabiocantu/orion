@@ -5,7 +5,8 @@ from pathlib import Path
 import streamlit as st
 
 from src.auth import render_footer
-from src.pdf_generator import generate_record_pdf, latest_pdf_for_record
+from src.boards import list_student_public_exam_boards
+from src.pdf_generator import generate_board_pdf, generate_record_pdf, latest_pdf_for_record
 from src.ui import apply_app_style
 from src.utils import format_date_br, get_answers, get_student_by_ra, list_criteria, list_student_public_sessions
 
@@ -24,7 +25,7 @@ st.markdown(
 )
 
 st.title("Consulta do Aluno")
-st.caption("Acesso somente leitura às fichas de assessoria já enviadas.")
+st.caption("Acesso somente leitura às fichas de assessoria e atas de banca já disponíveis.")
 
 st.page_link("app.py", label="Voltar para o Inicio", icon="\U0001F3E0")
 
@@ -54,12 +55,14 @@ if stored_ra:
     st.write(f"**Tema:** {student['theme']}")
 
     sessions = list_student_public_sessions(student["id"])
-    if not sessions:
-        st.info("Ainda não há fichas enviadas para consulta.")
+    boards = list_student_public_exam_boards(student["id"])
+    if not sessions and not boards:
+        st.info("Ainda não há fichas ou atas disponíveis para consulta.")
         render_footer()
         st.stop()
 
-    st.subheader("Fichas disponíveis")
+    if sessions:
+        st.subheader("Fichas disponíveis")
     for session in sessions:
         title = f"Assessoria {session['session_number']} | {session['phase']} | {session['final_evaluation'] or 'Sem avaliação'}"
         with st.expander(title):
@@ -98,5 +101,34 @@ if stored_ra:
                         mime="application/pdf",
                         key=f"student_download_{session['id']}",
                     )
+
+
+    if boards:
+        st.subheader("Atas de banca disponíveis")
+        for board in boards:
+            title = f"{board['stage']} | {format_date_br(board['scheduled_date'])} | {board['status']}"
+            with st.expander(title):
+                col_a, col_b, col_c = st.columns(3)
+                col_a.write(f"**Orientador:** {board['orientador'] or '-'}")
+                col_b.write(f"**Avaliadores:** {board['avaliadores'] or '-'}")
+                col_c.write(f"**Horário:** {board['scheduled_time'] or '-'}")
+                st.write(f"**Local:** {board['location'] or '-'}")
+                st.write(f"**Tema:** {board['theme'] or '-'}")
+                st.write(f"**Ata registrada em:** {format_date_br(board['minutes_updated_at'])}")
+
+                pdf_key = f"student_board_pdf_{board['id']}"
+                pdf_path = st.session_state.get(pdf_key)
+                if st.button("Gerar ata em PDF para baixar", key=f"student_generate_board_pdf_{board['id']}"):
+                    pdf_path = generate_board_pdf(board["id"])
+                    st.session_state[pdf_key] = str(pdf_path)
+                if pdf_path and Path(pdf_path).exists():
+                    with open(pdf_path, "rb") as pdf_file:
+                        st.download_button(
+                            "Baixar ata da banca em PDF",
+                            pdf_file,
+                            file_name=Path(pdf_path).name,
+                            mime="application/pdf",
+                            key=f"student_download_board_pdf_{board['id']}",
+                        )
 
 render_footer()

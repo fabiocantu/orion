@@ -550,6 +550,42 @@ def list_public_exam_boards(start_date: date, end_date: date):
         (start_date.isoformat(), end_date.isoformat()),
     )
 
+def list_student_public_exam_boards(student_id: int):
+    if using_postgres():
+        members_sql = """
+            COALESCE(STRING_AGG(advisors.name, ', ' ORDER BY advisors.name)
+                     FILTER (WHERE exam_board_members.can_record_minutes = 1), '-') AS orientador,
+            COALESCE(STRING_AGG(advisors.name, ', ' ORDER BY advisors.name)
+                     FILTER (WHERE exam_board_members.can_grade = 1), '-') AS avaliadores
+        """
+    else:
+        members_sql = """
+            COALESCE(GROUP_CONCAT(CASE WHEN exam_board_members.can_record_minutes = 1 THEN advisors.name END, ', '), '-') AS orientador,
+            COALESCE(GROUP_CONCAT(CASE WHEN exam_board_members.can_grade = 1 THEN advisors.name END, ', '), '-') AS avaliadores
+        """
+
+    return query(
+        f"""
+        SELECT exam_boards.id, exam_boards.stage, exam_boards.scheduled_date,
+               exam_boards.scheduled_time, exam_boards.location, exam_boards.status,
+               students.name AS student_name, students.theme, students.tfg_stage,
+               exam_minutes.updated_at AS minutes_updated_at,
+               {members_sql}
+        FROM exam_boards
+        JOIN students ON students.id = exam_boards.student_id
+        JOIN exam_minutes ON exam_minutes.board_id = exam_boards.id
+        LEFT JOIN exam_board_members ON exam_board_members.board_id = exam_boards.id
+        LEFT JOIN advisors ON advisors.id = exam_board_members.advisor_id
+        WHERE exam_boards.student_id = ?
+        GROUP BY exam_boards.id, exam_boards.stage, exam_boards.scheduled_date,
+                 exam_boards.scheduled_time, exam_boards.location, exam_boards.status,
+                 students.name, students.theme, students.tfg_stage, exam_minutes.updated_at
+        ORDER BY exam_boards.scheduled_date, exam_boards.scheduled_time, exam_boards.stage
+        """,
+        (student_id,),
+    )
+
+
 def advisor_id_for_user(user_id: int) -> int | None:
     row = query_one("SELECT id FROM advisors WHERE user_id = ?", (user_id,))
     return int(row["id"]) if row else None
