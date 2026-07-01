@@ -9,13 +9,31 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .boards import calculate_plan_occupation_grade, board_grade_summary, board_partial_grade, get_exam_board, get_minutes, list_board_members, list_exam_criteria, list_grades
+from . import boards as boards_module
+from .boards import board_grade_summary, board_partial_grade, get_exam_board, get_minutes, list_board_members, list_exam_criteria, list_grades
 from .database import PDF_DIR, execute, query
 from .timezone import now_local
 from .utils import format_date_br, get_answers, get_record, get_student_context_by_session, list_criteria
 
 
 LOGO_PATH = Path(__file__).resolve().parents[1] / "assets" / "logo.png"
+
+
+def calculate_plan_occupation_grade(partial_1: object, partial_2: object, board_average: object) -> float | None:
+    if hasattr(boards_module, "calculate_plan_occupation_grade"):
+        return boards_module.calculate_plan_occupation_grade(partial_1, partial_2, board_average)
+    if board_average is None:
+        return None
+
+    def as_float(value: object) -> float:
+        if value is None:
+            return 0.0
+        text = str(value).strip().replace(",", ".")
+        if not text or text.lower() in {"nan", "none", "null"}:
+            return 0.0
+        return float(text)
+
+    return round(as_float(partial_1) * 0.1 + as_float(partial_2) * 0.2 + as_float(board_average) * 0.7, 2)
 
 
 def generate_record_pdf(session_id: int) -> Path:

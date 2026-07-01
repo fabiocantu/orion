@@ -7,14 +7,13 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+import src.boards as boards_module
 from src.auth import render_footer, require_login
 from src.boards import (
     EXAM_STAGES,
     advisor_id_for_user,
     board_grade_summary,
     board_partial_grade,
-    board_overview,
-    calculate_plan_occupation_grade,
     board_status,
     consolidated_results,
     create_exam_criterion,
@@ -55,6 +54,23 @@ def bootstrap_boards_page() -> bool:
 
 def to_dicts(rows) -> list[dict]:
     return [dict(row) for row in rows]
+
+
+def calculate_plan_occupation_grade(partial_1: object, partial_2: object, board_average: object) -> float | None:
+    if hasattr(boards_module, "calculate_plan_occupation_grade"):
+        return boards_module.calculate_plan_occupation_grade(partial_1, partial_2, board_average)
+    if board_average is None:
+        return None
+
+    def as_float(value: object) -> float:
+        if value is None:
+            return 0.0
+        text = str(value).strip().replace(",", ".")
+        if not text or text.lower() in {"nan", "none", "null"}:
+            return 0.0
+        return float(text)
+
+    return round(as_float(partial_1) * 0.1 + as_float(partial_2) * 0.2 + as_float(board_average) * 0.7, 2)
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -109,7 +125,13 @@ def cached_board_partial_grade(board_id: int) -> dict | None:
 
 @st.cache_data(ttl=60, show_spinner=False)
 def cached_board_overview(board_id: int) -> dict:
-    return board_overview(board_id)
+    if hasattr(boards_module, "board_overview"):
+        return boards_module.board_overview(board_id)
+    status = dict(board_status(board_id))
+    partial_grade = board_partial_grade(board_id)
+    status["average_grade"] = partial_grade["average_grade"] if partial_grade else None
+    status["grades_count"] = partial_grade["grades_count"] if partial_grade else 0
+    return status
 
 
 @st.cache_data(ttl=20, show_spinner=False)
