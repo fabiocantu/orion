@@ -32,13 +32,16 @@ NAV_ITEMS = {
 }
 
 
-@st.cache_resource(show_spinner=False)
 def cookie_manager():
+    if "_orion_cookie_manager" in st.session_state:
+        return st.session_state["_orion_cookie_manager"]
     try:
         import extra_streamlit_components as stx
     except ImportError:
         return None
-    return stx.CookieManager()
+    manager = stx.CookieManager(key="orion_cookie_manager")
+    st.session_state["_orion_cookie_manager"] = manager
+    return manager
 
 
 def _utc_now() -> datetime:
