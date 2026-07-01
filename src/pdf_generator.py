@@ -184,7 +184,6 @@ def generate_board_pdf(board_id: int) -> Path:
             ["Parcial 2 x 0,2", f"{partial_2_value:.2f}", f"{partial_2_value * 0.2:.2f}"],
             ["Média dos avaliadores x 0,7", f"{average_value:.2f}", f"{average_value * 0.7:.2f}"],
             ["Nota final", "-", "-" if final_value is None else f"{final_value:.2f}"],
-            ["Situação", status, "-"],
         ]
     else:
         average_value = float(average)
@@ -193,9 +192,10 @@ def generate_board_pdf(board_id: int) -> Path:
             ["Componente", "Peso", "Nota considerada"],
             ["Média da banca", "100%", f"{average_value:.2f}"],
             ["Nota final", "100%", f"{average_value:.2f}"],
-            ["Situação", "-", status],
         ]
     story.append(_table(result_data, [7 * cm, 5 * cm, 5 * cm], header=True))
+    if average is not None:
+        story.append(Paragraph(f"<b>Situação:</b> {status}", styles["SmallWrap"]))
     story.append(Spacer(1, 10))
 
     story.append(Paragraph("<b>Ata da banca</b>", styles["Normal"]))

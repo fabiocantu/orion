@@ -438,6 +438,16 @@ CREATE TABLE IF NOT EXISTS audit_log (
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     key TEXT NOT NULL UNIQUE,
@@ -450,6 +460,8 @@ POSTGRES_SCHEMA = SQLITE_SCHEMA.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SE
 INDEXES_SQL = """
 CREATE INDEX IF NOT EXISTS idx_students_ra ON students(ra);
 CREATE INDEX IF NOT EXISTS idx_users_email_name ON users(email, name);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_token ON auth_sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_students_stage_period ON students(tfg_stage, year, semester);
 CREATE INDEX IF NOT EXISTS idx_orientations_student ON orientations(student_id);
 CREATE INDEX IF NOT EXISTS idx_orientations_advisor_period ON orientations(advisor_id, year, semester);

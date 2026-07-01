@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta
 import pandas as pd
 import streamlit as st
 
-from src.auth import login_form, render_footer, render_sidebar_navigation
+from src.auth import current_user, login_form, render_footer, render_sidebar_navigation
 from src.boards import list_public_exam_boards, public_exam_calendar_enabled
 from src.dashboard import dashboard_snapshot
 from src.seed import seed_initial_data
@@ -148,7 +148,7 @@ def render_public_exam_calendar() -> None:
 
     st.dataframe(df.style.apply(color_status, axis=1), width="stretch", hide_index=True)
 
-user = st.session_state.get("user")
+user = current_user()
 if not user:
     st.title("Início")
     st.caption("Gestor de Assessoria de TFG | Arquitetura e Urbanismo - Centro Universitário Mater Dei")

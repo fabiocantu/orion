@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
+
 import streamlit as st
 
 from .database import execute, query_one
 from .security import hash_password, is_password_hash, verify_password
+
+
+AUTH_COOKIE_NAME = "orion_remember_token"
+AUTH_SESSION_DAYS = 30
 
 
 NAV_ITEMS = {
@@ -24,6 +32,107 @@ NAV_ITEMS = {
 }
 
 
+@st.cache_resource(show_spinner=False)
+def cookie_manager():
+    try:
+        import extra_streamlit_components as stx
+    except ImportError:
+        return None
+    return stx.CookieManager()
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _public_user(row) -> dict:
+    data = dict(row)
+    data.pop("password", None)
+    return data
+
+
+def _get_cookie_token() -> str:
+    manager = cookie_manager()
+    if manager is None:
+        return ""
+    try:
+        return manager.get(AUTH_COOKIE_NAME) or ""
+    except Exception:
+        return ""
+
+
+def _set_cookie_token(token: str, expires_at: datetime) -> None:
+    manager = cookie_manager()
+    if manager is None:
+        return
+    try:
+        manager.set(AUTH_COOKIE_NAME, token, expires_at=expires_at)
+    except Exception:
+        pass
+
+
+def _delete_cookie_token() -> None:
+    manager = cookie_manager()
+    if manager is None:
+        return
+    try:
+        manager.delete(AUTH_COOKIE_NAME)
+    except Exception:
+        pass
+
+
+def create_persistent_session(user_id: int) -> None:
+    token = secrets.token_urlsafe(32)
+    expires_at = _utc_now() + timedelta(days=AUTH_SESSION_DAYS)
+    execute(
+        """
+        INSERT INTO auth_sessions (user_id, token_hash, expires_at)
+        VALUES (?, ?, ?)
+        """,
+        (user_id, _token_hash(token), expires_at.isoformat()),
+    )
+    _set_cookie_token(token, expires_at)
+
+
+def clear_persistent_session() -> None:
+    token = _get_cookie_token()
+    if token:
+        execute("DELETE FROM auth_sessions WHERE token_hash = ?", (_token_hash(token),))
+    _delete_cookie_token()
+
+
+def restore_user_from_cookie() -> dict | None:
+    if st.session_state.get("user"):
+        return st.session_state["user"]
+    token = _get_cookie_token()
+    if not token:
+        return None
+    now_text = _utc_now().isoformat()
+    row = query_one(
+        """
+        SELECT users.*
+        FROM auth_sessions
+        JOIN users ON users.id = auth_sessions.user_id
+        WHERE auth_sessions.token_hash = ? AND auth_sessions.expires_at > ?
+        """,
+        (_token_hash(token), now_text),
+    )
+    if not row:
+        _delete_cookie_token()
+        return None
+    execute("UPDATE auth_sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token_hash = ?", (_token_hash(token),))
+    st.session_state["user"] = _public_user(row)
+    return st.session_state["user"]
+
+
+def current_user() -> dict | None:
+    return st.session_state.get("user") or restore_user_from_cookie()
+
+
 def authenticate(email_or_name: str, password: str):
     value = email_or_name.strip().lower()
     user = query_one(
@@ -42,22 +151,26 @@ def authenticate(email_or_name: str, password: str):
 
 
 def login_form():
+    restore_user_from_cookie()
     st.subheader("Login")
     with st.form("login_form"):
         user = st.text_input("Usuário ou e-mail")
         password = st.text_input("Senha", type="password")
+        remember = st.checkbox("Manter conectado neste dispositivo", value=True)
         submitted = st.form_submit_button("Entrar")
     if submitted:
         found = authenticate(user, password)
         if found:
-            st.session_state["user"] = dict(found)
+            st.session_state["user"] = _public_user(found)
+            if remember:
+                create_persistent_session(found["id"])
             st.success("Login realizado.")
             st.rerun()
         st.error("Usuário ou senha inválidos.")
 
 
 def require_login():
-    user = st.session_state.get("user")
+    user = current_user()
     if not user:
         st.warning("Faça login para continuar.")
         st.page_link("app.py", label="Ir para o login", icon="🏠")
@@ -120,5 +233,6 @@ def render_footer() -> None:
 
 def logout_button() -> None:
     if st.sidebar.button("Sair", key="sidebar_logout_button"):
+        clear_persistent_session()
         st.session_state.pop("user", None)
         st.rerun()
