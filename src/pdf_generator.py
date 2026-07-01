@@ -9,7 +9,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .boards import board_grade_summary, board_partial_grade, get_exam_board, get_minutes, list_board_members, list_exam_criteria, list_grades
+from .boards import calculate_plan_occupation_grade, board_grade_summary, board_partial_grade, get_exam_board, get_minutes, list_board_members, list_exam_criteria, list_grades
 from .database import PDF_DIR, execute, query
 from .timezone import now_local
 from .utils import format_date_br, get_answers, get_record, get_student_context_by_session, list_criteria
@@ -115,11 +115,11 @@ def generate_board_pdf(board_id: int) -> Path:
     story.append(Spacer(1, 10))
 
     story.append(Paragraph("<b>Composição da banca</b>", styles["Normal"]))
-    member_data = [["Nome", "Papel", "E-mail"]]
+    member_data = [["Nome", "Papel"]]
     for member in members:
         role = "Orientador" if member["can_record_minutes"] else "Avaliador"
-        member_data.append([_p(member["name"], styles["SmallWrap"]), role, _p(member["email"], styles["SmallWrap"])])
-    story.append(_table(member_data, [6 * cm, 4 * cm, 7 * cm], header=True))
+        member_data.append([_p(member["name"], styles["SmallWrap"]), role])
+    story.append(_table(member_data, [11 * cm, 6 * cm], header=True))
     story.append(Spacer(1, 10))
 
     story.append(Paragraph("<b>Resumo das notas</b>", styles["Normal"]))
@@ -149,15 +149,35 @@ def generate_board_pdf(board_id: int) -> Path:
     story.append(_table(detail_data, [4.6 * cm, 4.4 * cm, 2 * cm, 6 * cm], header=True))
     story.append(Spacer(1, 10))
 
-    story.append(Paragraph("<b>Resultado final</b>", styles["Normal"]))
+    story.append(Paragraph("<b>Composição da nota</b>", styles["Normal"]))
     average = final_grade.get("average_grade")
+    is_plan_occupation = "plano" in str(board["stage"]).lower() and "ocupa" in str(board["stage"]).lower()
     if average is None:
-        result_data = [["Nota final", "Situação"], ["-", "Sem notas lançadas"]]
+        result_data = [["Componente", "Nota bruta", "Valor ponderado"], ["Média dos avaliadores x 0,7", "Sem notas lançadas", "-"]]
+    elif is_plan_occupation:
+        average_value = float(average)
+        partial_1_value = float(board.get("plan_partial_1") or 0)
+        partial_2_value = float(board.get("plan_partial_2") or 0)
+        final_value = calculate_plan_occupation_grade(partial_1_value, partial_2_value, average_value)
+        status = "Aprovado" if final_value is not None and final_value >= 7 else "Reprovado em banca"
+        result_data = [
+            ["Componente", "Nota bruta", "Valor ponderado"],
+            ["Parcial 1 x 0,1", f"{partial_1_value:.2f}", f"{partial_1_value * 0.1:.2f}"],
+            ["Parcial 2 x 0,2", f"{partial_2_value:.2f}", f"{partial_2_value * 0.2:.2f}"],
+            ["Média dos avaliadores x 0,7", f"{average_value:.2f}", f"{average_value * 0.7:.2f}"],
+            ["Nota final", "-", "-" if final_value is None else f"{final_value:.2f}"],
+            ["Situação", status, "-"],
+        ]
     else:
         average_value = float(average)
         status = "Aprovado" if average_value >= 7 else "Reprovado em banca"
-        result_data = [["Nota final", "Situação"], [f"{average_value:.2f}", status]]
-    story.append(_table(result_data, [5 * cm, 12 * cm], header=True))
+        result_data = [
+            ["Componente", "Peso", "Nota considerada"],
+            ["Média da banca", "100%", f"{average_value:.2f}"],
+            ["Nota final", "100%", f"{average_value:.2f}"],
+            ["Situação", "-", status],
+        ]
+    story.append(_table(result_data, [7 * cm, 5 * cm, 5 * cm], header=True))
     story.append(Spacer(1, 10))
 
     story.append(Paragraph("<b>Ata da banca</b>", styles["Normal"]))

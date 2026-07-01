@@ -215,10 +215,11 @@ for criterion in criteria_rows:
     cols[0].write(f"**{criterion['group_name']}**")
     cols[0].caption(criterion["description"])
     not_applicable = cols[0].checkbox("Não compete à etapa", key=not_applicable_key)
-    answer = cols[0].select_slider(
+    answer = cols[0].radio(
         "Avaliação",
         RATINGS,
         key=answer_key,
+        horizontal=True,
         disabled=not_applicable,
     )
     comment_disabled = not_applicable

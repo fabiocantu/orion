@@ -27,6 +27,7 @@ from src.utils import (
     list_students_without_orientation,
     rows_to_df,
     update_criterion,
+    update_student_plan_partials,
     update_student_ra,
 )
 
@@ -140,12 +141,14 @@ elif section == "Alunos":
         email = col1.text_input("E-mail do aluno")
         tfg_stage = col1.selectbox("Etapa", ["TFG I", "TFG II"])
         theme = col2.text_input("Tema")
+        partial_1 = col1.text_input("Parcial 1 - Plano de Ocupação", help="Opcional. Use apenas para TFG I.")
+        partial_2 = col2.text_input("Parcial 2 - Plano de Ocupação", help="Opcional. Use apenas para TFG I.")
         year = col1.number_input("Ano", min_value=2020, max_value=2100, value=2026)
         semester = col2.selectbox("Semestre", [1, 2])
         submitted = st.form_submit_button("Cadastrar aluno")
     if submitted:
         try:
-            create_student(name, email, tfg_stage, theme, int(year), int(semester), ra)
+            create_student(name, email, tfg_stage, theme, int(year), int(semester), ra, partial_1, partial_2)
             clear_read_cache()
             st.success("Aluno cadastrado.")
             st.rerun()
@@ -154,22 +157,99 @@ elif section == "Alunos":
 
     st.subheader("Alunos cadastrados")
     all_students = cached_students_simple()
-    students_df = rows_to_df(cached_all_students())
-    st.dataframe(paginate_dataframe(students_df, "students"), width="stretch")
+    students_df = rows_to_df(all_students)
+    if students_df.empty:
+        st.info("Nenhum aluno cadastrado.")
+    else:
+        editor_columns = [
+            "id",
+            "name",
+            "ra",
+            "email",
+            "tfg_stage",
+            "theme",
+            "year",
+            "semester",
+            "plan_partial_1",
+            "plan_partial_2",
+        ]
+        editor_df = students_df[[col for col in editor_columns if col in students_df.columns]].rename(
+            columns={
+                "id": "ID",
+                "name": "Nome",
+                "ra": "RA",
+                "email": "E-mail",
+                "tfg_stage": "Etapa",
+                "theme": "Tema",
+                "year": "Ano",
+                "semester": "Semestre",
+                "plan_partial_1": "Parcial 1",
+                "plan_partial_2": "Parcial 2",
+            }
+        )
+        for grade_col in ("Parcial 1", "Parcial 2"):
+            if grade_col in editor_df.columns:
+                editor_df[grade_col] = pd.to_numeric(editor_df[grade_col], errors="coerce")
 
-    st.subheader("Atualizar RA do aluno")
-    if all_students:
-        student_ra_options = {f"{item['name']} - RA: {item['ra'] or 'sem RA'}": item for item in all_students}
-        selected_ra_label = st.selectbox("Aluno para atualizar RA", list(student_ra_options.keys()))
-        selected_student_ra = student_ra_options[selected_ra_label]
-        with st.form("update_student_ra_form"):
-            new_ra = st.text_input("RA", value=selected_student_ra["ra"] or "")
-            update_ra_submitted = st.form_submit_button("Salvar RA")
-        if update_ra_submitted:
+        with st.form("students_table_form"):
+            edited_df = st.data_editor(
+                editor_df,
+                hide_index=True,
+                num_rows="fixed",
+                width="stretch",
+                disabled=["ID", "Nome", "E-mail", "Etapa", "Tema", "Ano", "Semestre"],
+                column_config={
+                    "ID": st.column_config.NumberColumn("ID", disabled=True, width="small"),
+                    "RA": st.column_config.TextColumn("RA"),
+                    "Parcial 1": st.column_config.NumberColumn(
+                        "Parcial 1",
+                        min_value=0.0,
+                        max_value=10.0,
+                        step=0.1,
+                        format="%.2f",
+                        help="Nota opcional do Plano de Ocupação - TFG I.",
+                    ),
+                    "Parcial 2": st.column_config.NumberColumn(
+                        "Parcial 2",
+                        min_value=0.0,
+                        max_value=10.0,
+                        step=0.1,
+                        format="%.2f",
+                        help="Nota opcional do Plano de Ocupação - TFG I.",
+                    ),
+                },
+                key="students_editor",
+            )
+            save_table = st.form_submit_button("Salvar alterações da tabela")
+
+        if save_table:
             try:
-                update_student_ra(selected_student_ra["id"], new_ra)
+                original_by_id = editor_df.set_index("ID")
+                edited_by_id = edited_df.set_index("ID")
+                updates = 0
+                for student_id, row in edited_by_id.iterrows():
+                    original = original_by_id.loc[student_id]
+                    old_ra = "" if pd.isna(original.get("RA")) else str(original.get("RA")).strip()
+                    new_ra = "" if pd.isna(row.get("RA")) else str(row.get("RA")).strip()
+                    old_partial_1 = original.get("Parcial 1")
+                    old_partial_2 = original.get("Parcial 2")
+                    new_partial_1 = row.get("Parcial 1")
+                    new_partial_2 = row.get("Parcial 2")
+                    partials_changed = not (
+                        (pd.isna(old_partial_1) and pd.isna(new_partial_1) or old_partial_1 == new_partial_1)
+                        and (pd.isna(old_partial_2) and pd.isna(new_partial_2) or old_partial_2 == new_partial_2)
+                    )
+                    if new_ra != old_ra:
+                        update_student_ra(int(student_id), new_ra)
+                        updates += 1
+                    if partials_changed:
+                        update_student_plan_partials(int(student_id), new_partial_1, new_partial_2)
+                        updates += 1
                 clear_read_cache()
-                st.success("RA atualizado.")
+                if updates:
+                    st.success("Alterações salvas.")
+                else:
+                    st.info("Nenhuma alteração para salvar.")
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
@@ -264,8 +344,8 @@ elif section == "Importação em lote":
         label_visibility="collapsed",
     )
     required_columns = {
-        "Alunos": "Colunas obrigatórias: nome, etapa_tfg, tema. Professor/orientador não é necessário.",
-        "Alunos + orientadores": "Colunas obrigatórias: nome, etapa_tfg, tema. Professor e e-mail do professor são opcionais.",
+        "Alunos": "Colunas obrigatórias: nome, etapa_tfg, tema. Campos opcionais: parcial_1, parcial_2.",
+        "Alunos + orientadores": "Colunas obrigatórias: nome, etapa_tfg, tema. Professor, e-mail do professor, parcial_1 e parcial_2 são opcionais.",
         "Professores": "Coluna obrigatória: nome. E-mail e senha são opcionais.",
         "Orientações": "Colunas obrigatórias: aluno, orientador.",
         "Critérios": "Colunas obrigatórias: etapa_tfg, fase, criterio, descricao.",
@@ -284,6 +364,8 @@ elif section == "Importação em lote":
                         "tema": "Centro Cultural",
                         "ano": 2026,
                         "semestre": 1,
+                        "parcial_1": "",
+                        "parcial_2": "",
                         "professor": "Fabio Cantu",
                         "email_professor": "fabio@materdei.edu",
                     }
@@ -308,6 +390,8 @@ elif section == "Importação em lote":
                         "tema": "Biblioteca de bairro",
                         "ano": 2026,
                         "semestre": 1,
+                        "parcial_1": "",
+                        "parcial_2": "",
                     }
                 ]
             ),

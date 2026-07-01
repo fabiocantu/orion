@@ -193,10 +193,11 @@ for criterion in criteria_rows:
         key=not_applicable_key,
         disabled=disabled_record,
     )
-    answer = cols[0].select_slider(
+    answer = cols[0].radio(
         "Avaliação",
         RATINGS,
         key=answer_key,
+        horizontal=True,
         disabled=disabled_record or not_applicable,
     )
     comment_disabled = disabled_record or not_applicable

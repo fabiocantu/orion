@@ -55,6 +55,23 @@ def seed_exam_criteria() -> None:
     return
 
 
+
+
+def calculate_plan_occupation_grade(partial_1: object, partial_2: object, board_average: object) -> float | None:
+    if board_average is None:
+        return None
+
+    def as_float(value: object) -> float:
+        if value is None:
+            return 0.0
+        text = str(value).strip().replace(",", ".")
+        if not text or text.lower() in {"nan", "none", "null"}:
+            return 0.0
+        return float(text)
+
+    return round(as_float(partial_1) * 0.1 + as_float(partial_2) * 0.2 + as_float(board_average) * 0.7, 2)
+
+
 def list_exam_criteria(stage: str, active_only: bool = True):
     sql = "SELECT * FROM exam_criteria WHERE stage = ?"
     params: list[object] = [stage]
@@ -225,7 +242,7 @@ def get_exam_board(board_id: int):
         """
         SELECT exam_boards.*, students.name AS student_name, students.theme,
                students.email AS student_email, students.ra, students.tfg_stage,
-               students.year, students.semester
+               students.year, students.semester, students.plan_partial_1, students.plan_partial_2
         FROM exam_boards
         JOIN students ON students.id = exam_boards.student_id
         WHERE exam_boards.id = ?
@@ -410,18 +427,23 @@ def board_status(board_id: int) -> dict:
         (board_id,),
     )
     total_criteria = int(criteria_count["total"] if criteria_count else 0)
+    grade_counts = {
+        row["advisor_id"]: int(row["total"])
+        for row in query(
+            """
+            SELECT advisor_id, COUNT(*) AS total
+            FROM exam_grades
+            WHERE board_id = ?
+            GROUP BY advisor_id
+            """,
+            (board_id,),
+        )
+    }
     sent = []
     pending = []
     for evaluator in evaluators:
-        row = query_one(
-            """
-            SELECT COUNT(*) AS total
-            FROM exam_grades
-            WHERE board_id = ? AND advisor_id = ?
-            """,
-            (board_id, evaluator["advisor_id"]),
-        )
-        if total_criteria > 0 and int(row["total"] if row else 0) >= total_criteria:
+        total_sent = grade_counts.get(evaluator["advisor_id"], 0)
+        if total_criteria > 0 and total_sent >= total_criteria:
             sent.append(evaluator["name"])
         else:
             pending.append(evaluator["name"])
@@ -436,6 +458,78 @@ def board_status(board_id: int) -> dict:
         "minutes": bool(minutes),
         "total_evaluators": len(evaluators),
         "total_criteria": total_criteria,
+    }
+
+
+def board_overview(board_id: int) -> dict:
+    rows = query(
+        """
+        SELECT exam_board_members.advisor_id, exam_board_members.can_grade, advisors.name,
+               COUNT(exam_grades.id) AS grades_count,
+               SUM(exam_grades.grade) AS grade_sum,
+               criteria.total_criteria,
+               CASE WHEN exam_minutes.id IS NULL THEN 0 ELSE 1 END AS has_minutes
+        FROM exam_board_members
+        JOIN advisors ON advisors.id = exam_board_members.advisor_id
+        JOIN exam_boards ON exam_boards.id = exam_board_members.board_id
+        CROSS JOIN (
+            SELECT COUNT(*) AS total_criteria
+            FROM exam_criteria
+            WHERE stage = (SELECT stage FROM exam_boards WHERE id = ?) AND active = 1
+        ) AS criteria
+        LEFT JOIN exam_grades ON exam_grades.board_id = exam_board_members.board_id
+            AND exam_grades.advisor_id = exam_board_members.advisor_id
+        LEFT JOIN exam_minutes ON exam_minutes.board_id = exam_board_members.board_id
+        WHERE exam_board_members.board_id = ?
+        GROUP BY exam_board_members.advisor_id, exam_board_members.can_grade, advisors.name,
+                 criteria.total_criteria, exam_minutes.id, exam_board_members.member_role
+        ORDER BY exam_board_members.member_role DESC, advisors.name
+        """,
+        (board_id, board_id),
+    )
+    if not rows:
+        return {
+            "status": "Pendente",
+            "sent": [],
+            "pending": [],
+            "minutes": False,
+            "total_evaluators": 0,
+            "total_criteria": 0,
+            "average_grade": None,
+            "grades_count": 0,
+        }
+
+    total_criteria = int(rows[0]["total_criteria"] or 0)
+    has_minutes = bool(rows[0]["has_minutes"])
+    sent = []
+    pending = []
+    grade_sum = 0.0
+    grades_count = 0
+    total_evaluators = 0
+    for row in rows:
+        if row["can_grade"]:
+            total_evaluators += 1
+            evaluator_grades = int(row["grades_count"] or 0)
+            if total_criteria > 0 and evaluator_grades >= total_criteria:
+                sent.append(row["name"])
+            else:
+                pending.append(row["name"])
+            grade_sum += float(row["grade_sum"] or 0)
+            grades_count += evaluator_grades
+
+    complete = len(pending) == 0 and has_minutes and total_criteria > 0
+    partial = bool(sent) or has_minutes
+    status = "Completa" if complete else "Parcial" if partial else "Pendente"
+    average_grade = round(grade_sum / grades_count, 4) if grades_count else None
+    return {
+        "status": status,
+        "sent": sent,
+        "pending": pending,
+        "minutes": has_minutes,
+        "total_evaluators": total_evaluators,
+        "total_criteria": total_criteria,
+        "average_grade": average_grade,
+        "grades_count": grades_count,
     }
 
 
@@ -486,8 +580,9 @@ def consolidated_results(advisor_id: int | None = None):
         params = (advisor_id,)
     return query(
         f"""
-        SELECT exam_boards.id AS board_id, students.name AS student_name, exam_boards.stage,
-               exam_boards.status, AVG(exam_grades.grade) AS average_grade,
+        SELECT exam_boards.id AS board_id, students.id AS student_id, students.name AS student_name,
+               students.tfg_stage, students.plan_partial_1, students.plan_partial_2,
+               exam_boards.stage, exam_boards.status, AVG(exam_grades.grade) AS average_grade,
                COUNT(DISTINCT exam_grades.advisor_id) AS evaluators_with_grade,
                COUNT(exam_grades.id) AS grades_count,
                CASE WHEN exam_minutes.id IS NULL THEN 'Pendente' ELSE 'Registrada' END AS minutes_status
@@ -496,7 +591,8 @@ def consolidated_results(advisor_id: int | None = None):
         LEFT JOIN exam_grades ON exam_grades.board_id = exam_boards.id
         LEFT JOIN exam_minutes ON exam_minutes.board_id = exam_boards.id
         {where_sql}
-        GROUP BY exam_boards.id, students.name, exam_boards.stage, exam_boards.status, exam_minutes.id
+        GROUP BY exam_boards.id, students.id, students.name, students.tfg_stage, students.plan_partial_1, students.plan_partial_2,
+                 exam_boards.stage, exam_boards.status, exam_minutes.id
         ORDER BY students.name, exam_boards.stage
         """,
         params,

@@ -277,6 +277,8 @@ CREATE TABLE IF NOT EXISTS students (
     theme TEXT NOT NULL,
     year INTEGER NOT NULL,
     semester INTEGER NOT NULL,
+    plan_partial_1 REAL,
+    plan_partial_2 REAL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -471,11 +473,25 @@ def init_db() -> None:
     ensure_directories()
     with get_connection() as conn:
         conn.executescript(POSTGRES_SCHEMA if conn.backend == "postgres" else SQLITE_SCHEMA)
+        _migrate_student_partial_grades(conn)
         if conn.backend == "sqlite":
             _migrate_students_ra(conn)
             _migrate_answer_scale(conn)
         _ensure_indexes(conn)
 
+
+
+def _migrate_student_partial_grades(conn: DatabaseConnection) -> None:
+    if conn.backend == "postgres":
+        conn.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS plan_partial_1 REAL")
+        conn.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS plan_partial_2 REAL")
+        return
+
+    columns = [row["name"] for row in conn.execute("PRAGMA table_info(students)").fetchall()]
+    if "plan_partial_1" not in columns:
+        conn.execute("ALTER TABLE students ADD COLUMN plan_partial_1 REAL")
+    if "plan_partial_2" not in columns:
+        conn.execute("ALTER TABLE students ADD COLUMN plan_partial_2 REAL")
 
 def _migrate_students_ra(conn: DatabaseConnection) -> None:
     columns = [row["name"] for row in conn.execute("PRAGMA table_info(students)").fetchall()]

@@ -66,24 +66,52 @@ def create_student(
     year: int,
     semester: int,
     ra: str = "",
+    plan_partial_1: float | None = None,
+    plan_partial_2: float | None = None,
 ) -> int:
     if tfg_stage not in ("TFG I", "TFG II"):
         raise ValueError("Etapa deve ser TFG I ou TFG II.")
     if int(semester) not in (1, 2):
         raise ValueError("Semestre deve ser 1 ou 2.")
     cleaned_ra = clean_optional(ra)
+    partial_1_value = parse_optional_grade(plan_partial_1)
+    partial_2_value = parse_optional_grade(plan_partial_2)
     if cleaned_ra:
         existing_ra = query_one("SELECT id FROM students WHERE lower(ra) = lower(?)", (cleaned_ra,))
         if existing_ra:
             raise ValueError("Ja existe um aluno cadastrado com este RA.")
     return execute(
         """
-        INSERT INTO students (name, ra, email, tfg_stage, theme, year, semester)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO students (name, ra, email, tfg_stage, theme, year, semester, plan_partial_1, plan_partial_2)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (name.strip(), cleaned_ra, email.strip(), tfg_stage, theme.strip(), int(year), int(semester)),
+        (name.strip(), cleaned_ra, email.strip(), tfg_stage, theme.strip(), int(year), int(semester), partial_1_value, partial_2_value),
     )
 
+
+
+def parse_optional_grade(value: object) -> float | None:
+    text = clean_optional(value).replace(",", ".")
+    if not text:
+        return None
+    try:
+        grade = float(text)
+    except ValueError as exc:
+        raise ValueError(f"Nota inválida: {value}") from exc
+    if grade < 0 or grade > 10:
+        raise ValueError("As notas parciais devem ficar entre 0 e 10.")
+    return grade
+
+
+def update_student_plan_partials(student_id: int, partial_1: object, partial_2: object) -> None:
+    execute(
+        """
+        UPDATE students
+        SET plan_partial_1 = ?, plan_partial_2 = ?
+        WHERE id = ?
+        """,
+        (parse_optional_grade(partial_1), parse_optional_grade(partial_2), student_id),
+    )
 
 def create_orientation(student_id: int, advisor_id: int, year: int, semester: int) -> int:
     existing = query_one(
@@ -268,6 +296,15 @@ def import_people_batch(df: pd.DataFrame) -> dict:
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Colunas ausentes: {', '.join(sorted(missing))}")
+    rename_map = {
+        "parcial 1": "parcial_1",
+        "parcial1": "parcial_1",
+        "nota parcial 1": "parcial_1",
+        "parcial 2": "parcial_2",
+        "parcial2": "parcial_2",
+        "nota parcial 2": "parcial_2",
+    }
+    df = df.rename(columns={key: value for key, value in rename_map.items() if key in df.columns})
     optional_defaults = {
         "ra": "",
         "email": "",
@@ -275,6 +312,8 @@ def import_people_batch(df: pd.DataFrame) -> dict:
         "semestre": 1,
         "professor": "",
         "email_professor": "",
+        "parcial_1": "",
+        "parcial_2": "",
     }
     for column, default in optional_defaults.items():
         if column not in df.columns:
@@ -307,6 +346,8 @@ def import_people_batch(df: pd.DataFrame) -> dict:
             year,
             semester,
             clean_optional(row["ra"]),
+            parse_optional_grade(row.get("parcial_1")),
+            parse_optional_grade(row.get("parcial_2")),
         )
         created_students += 1
         if advisor_id:
@@ -356,7 +397,16 @@ def import_students_batch(df: pd.DataFrame) -> dict:
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"Colunas ausentes: {', '.join(sorted(missing))}")
-    for column, default in {"ra": "", "email": "", "ano": 2026, "semestre": 1}.items():
+    rename_map = {
+        "parcial 1": "parcial_1",
+        "parcial1": "parcial_1",
+        "nota parcial 1": "parcial_1",
+        "parcial 2": "parcial_2",
+        "parcial2": "parcial_2",
+        "nota parcial 2": "parcial_2",
+    }
+    df = df.rename(columns={key: value for key, value in rename_map.items() if key in df.columns})
+    for column, default in {"ra": "", "email": "", "ano": 2026, "semestre": 1, "parcial_1": "", "parcial_2": ""}.items():
         if column not in df.columns:
             df[column] = default
 
@@ -372,6 +422,8 @@ def import_students_batch(df: pd.DataFrame) -> dict:
             int(clean_optional(row.get("ano")) or 2026),
             int(clean_optional(row.get("semestre")) or 1),
             clean_optional(row.get("ra")),
+            parse_optional_grade(row.get("parcial_1")),
+            parse_optional_grade(row.get("parcial_2")),
         )
         created += 1
     return {"students": created}

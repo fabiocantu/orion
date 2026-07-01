@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import unicodedata
-import time
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -14,6 +13,8 @@ from src.boards import (
     advisor_id_for_user,
     board_grade_summary,
     board_partial_grade,
+    board_overview,
+    calculate_plan_occupation_grade,
     board_status,
     consolidated_results,
     create_exam_criterion,
@@ -36,9 +37,9 @@ from src.boards import (
     update_exam_criterion,
 )
 from src.pdf_generator import generate_board_pdf
-from src.timezone import local_time_from_timestamp, today_local
+from src.timezone import today_local
 from src.ui import apply_app_style, paginate_dataframe, render_item_list
-from src.utils import create_professor, format_date_br, list_advisors, list_all_students, rows_to_df
+from src.utils import create_professor, format_date_br, list_advisors, list_all_students, rows_to_df, update_student_plan_partials
 
 
 st.set_page_config(page_title="Bancas", layout="wide")
@@ -56,25 +57,25 @@ def to_dicts(rows) -> list[dict]:
     return [dict(row) for row in rows]
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def cached_boards(scope: str, current_advisor_id: int | None) -> list[dict]:
     if scope == "coord":
         return to_dicts(list_exam_boards())
     return to_dicts(list_exam_boards({"advisor_id": current_advisor_id or -1}))
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def cached_board(board_id: int) -> dict | None:
     row = get_exam_board(board_id)
     return dict(row) if row else None
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def cached_board_members(board_id: int) -> list[dict]:
     return to_dicts(list_board_members(board_id))
 
 
-@st.cache_data(ttl=20, show_spinner=False)
+@st.cache_data(ttl=60, show_spinner=False)
 def cached_exam_criteria(stage: str, active_only: bool = True) -> list[dict]:
     return to_dicts(list_exam_criteria(stage, active_only=active_only))
 
@@ -93,6 +94,22 @@ def cached_minutes(board_id: int) -> dict | None:
 @st.cache_data(ttl=20, show_spinner=False)
 def cached_grade_summary(board_id: int) -> list[dict]:
     return to_dicts(board_grade_summary(board_id))
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def cached_board_status(board_id: int) -> dict:
+    return board_status(board_id)
+
+
+@st.cache_data(ttl=20, show_spinner=False)
+def cached_board_partial_grade(board_id: int) -> dict | None:
+    row = board_partial_grade(board_id)
+    return dict(row) if row else None
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def cached_board_overview(board_id: int) -> dict:
+    return board_overview(board_id)
 
 
 @st.cache_data(ttl=20, show_spinner=False)
@@ -119,6 +136,9 @@ def clear_read_cache() -> None:
     cached_grades.clear()
     cached_minutes.clear()
     cached_grade_summary.clear()
+    cached_board_status.clear()
+    cached_board_partial_grade.clear()
+    cached_board_overview.clear()
     cached_results.clear()
     cached_students.clear()
     cached_advisors.clear()
@@ -326,15 +346,65 @@ if section == "Minhas bancas":
                 st.warning("Banca não encontrada.")
                 st.stop()
 
-            status = board_status(board["id"])
-            partial_grade = board_partial_grade(board["id"])
-            partial_average = partial_grade["average_grade"] if partial_grade and partial_grade["average_grade"] is not None else None
-            col1, col2, col3, col4, col5 = st.columns(5)
-            col1.metric("Aluno", board["student_name"])
-            col2.metric("Etapa", board["stage"])
-            col3.metric("Data", format_date_br(board["scheduled_date"]))
-            col4.metric("Status", status["status"])
-            col5.metric("Nota parcial", "-" if partial_average is None else f"{float(partial_average):.2f}")
+            overview = cached_board_overview(board["id"])
+            status = overview
+            partial_average = overview["average_grade"] if overview.get("average_grade") is not None else None
+            is_plan_occupation = "plano" in str(board["stage"]).lower() and "ocupa" in str(board["stage"]).lower()
+            plan_occupation_grade = calculate_plan_occupation_grade(
+                board.get("plan_partial_1"),
+                board.get("plan_partial_2"),
+                partial_average,
+            ) if is_plan_occupation else None
+            metric_columns = st.columns(6 if is_plan_occupation else 5)
+            metric_columns[0].metric("Aluno", board["student_name"])
+            metric_columns[1].metric("Etapa", board["stage"])
+            metric_columns[2].metric("Data", format_date_br(board["scheduled_date"]))
+            metric_columns[3].metric("Status", status["status"])
+            metric_columns[4].metric("Média da banca", "-" if partial_average is None else f"{float(partial_average):.2f}")
+            if is_plan_occupation:
+                metric_columns[5].metric("Nota final", "-" if plan_occupation_grade is None else f"{plan_occupation_grade:.2f}")
+
+            st.markdown("**Composição da nota**")
+            if is_plan_occupation:
+                partial_1_value = float(board.get("plan_partial_1") or 0)
+                partial_2_value = float(board.get("plan_partial_2") or 0)
+                board_average_value = None if partial_average is None else float(partial_average)
+                composition_rows = [
+                    {
+                        "Componente": "Parcial 1 x 0,1",
+                        "Nota bruta": f"{partial_1_value:.2f}",
+                        "Valor ponderado": f"{partial_1_value * 0.1:.2f}",
+                    },
+                    {
+                        "Componente": "Parcial 2 x 0,2",
+                        "Nota bruta": f"{partial_2_value:.2f}",
+                        "Valor ponderado": f"{partial_2_value * 0.2:.2f}",
+                    },
+                    {
+                        "Componente": "Média dos avaliadores x 0,7",
+                        "Nota bruta": "-" if board_average_value is None else f"{board_average_value:.2f}",
+                        "Valor ponderado": "-" if board_average_value is None else f"{board_average_value * 0.7:.2f}",
+                    },
+                    {
+                        "Componente": "Nota final",
+                        "Nota bruta": "-",
+                        "Valor ponderado": "-" if plan_occupation_grade is None else f"{plan_occupation_grade:.2f}",
+                    },
+                ]
+            else:
+                composition_rows = [
+                    {
+                        "Componente": "Média da banca",
+                        "Peso": "100%",
+                        "Nota considerada": "-" if partial_average is None else f"{float(partial_average):.2f}",
+                    },
+                    {
+                        "Componente": "Nota final",
+                        "Peso": "100%",
+                        "Nota considerada": "-" if partial_average is None else f"{float(partial_average):.2f}",
+                    },
+                ]
+            st.dataframe(pd.DataFrame(composition_rows), width="stretch", hide_index=True)
             st.write(f"**Tema:** {board['theme']}")
             if board["location"]:
                 st.write(f"**Local:** {board['location']}")
@@ -408,12 +478,13 @@ if section == "Minhas bancas":
                         st.caption(criterion["description"])
                         cols = st.columns([1, 2])
                         grades[criterion["id"]] = {
-                            "grade": cols[0].slider(
+                            "grade": cols[0].number_input(
                                 "Nota",
                                 min_value=0.0,
                                 max_value=10.0,
                                 value=float(current.get("grade", 6.0) or 6.0),
                                 step=1.0,
+                                format="%.1f",
                                 key=f"grade_{board['id']}_{criterion['id']}",
                             ),
                             "observation": cols[1].text_input(
@@ -425,47 +496,13 @@ if section == "Minhas bancas":
 
                     current_values = [float(item["grade"]) for item in grades.values()]
                     evaluator_preview = sum(current_values) / len(current_values)
-                    all_existing_grades = cached_grades(board["id"], None)
-                    other_values = [
-                        float(row["grade"])
-                        for row in all_existing_grades
-                        if int(row["advisor_id"]) != int(advisor_id)
-                    ]
-                    board_preview_values = other_values + current_values
-                    board_preview = sum(board_preview_values) / len(board_preview_values)
-                    preview_col1, preview_col2 = st.columns(2)
-                    preview_col1.metric("Sua média prévia", f"{evaluator_preview:.2f}")
-                    preview_col2.metric("Prévia parcial da banca", f"{board_preview:.2f}")
-                    st.caption(f"Cálculo: média aritmética simples dos {len(current_values)} critério(s) preenchidos.")
+                    st.metric("Sua média prévia", f"{evaluator_preview:.2f}")
+                    st.caption(
+                        f"Cálculo local: média aritmética simples dos {len(current_values)} critério(s) preenchidos. "
+                        "A prévia parcial da banca é atualizada após salvar as notas."
+                    )
 
-                    grades_snapshot = {
-                        criterion_id: {
-                            "grade": float(item["grade"]),
-                            "observation": item.get("observation", ""),
-                        }
-                        for criterion_id, item in grades.items()
-                    }
-                    initial_grades_key = f"board_grades_initial_{board['id']}_{advisor_id}"
-                    saved_grades_key = f"board_grades_saved_{board['id']}_{advisor_id}"
-                    saved_grades_at_key = f"board_grades_saved_at_{board['id']}_{advisor_id}"
-                    if initial_grades_key not in st.session_state:
-                        st.session_state[initial_grades_key] = grades_snapshot
-                    if grades_snapshot != st.session_state[initial_grades_key]:
-                        now = time.time()
-                        last_saved_at = float(st.session_state.get(saved_grades_at_key, 0))
-                        if grades_snapshot != st.session_state.get(saved_grades_key) and now - last_saved_at >= 8:
-                            try:
-                                save_grades(board["id"], advisor_id, grades_snapshot)
-                                st.session_state[saved_grades_key] = grades_snapshot
-                                st.session_state[initial_grades_key] = grades_snapshot
-                                st.session_state[saved_grades_at_key] = now
-                                clear_read_cache()
-                            except Exception as exc:
-                                st.warning(f"Não consegui salvar o rascunho das notas: {exc}")
-                    last_grades_autosave = st.session_state.get(saved_grades_at_key)
-                    if last_grades_autosave:
-                        saved_time = local_time_from_timestamp(float(last_grades_autosave)).strftime("%H:%M:%S")
-                        st.caption(f"Notas salvas automaticamente às {saved_time}.")
+                    st.caption("As alterações nas notas só são gravadas ao clicar em Salvar notas.")
 
                     if st.button("Salvar notas", key=f"save_grades_{board['id']}_{advisor_id}"):
                         try:
@@ -488,34 +525,18 @@ if section == "Minhas bancas":
                     height=260,
                     placeholder="Registre decisões, observações, encaminhamentos e recomendações da banca.",
                 )
-                initial_minutes_key = f"board_minutes_initial_{board['id']}"
-                saved_minutes_key = f"board_minutes_saved_{board['id']}"
-                saved_minutes_at_key = f"board_minutes_saved_at_{board['id']}"
-                if initial_minutes_key not in st.session_state:
-                    st.session_state[initial_minutes_key] = text
-                if text.strip() and text != st.session_state[initial_minutes_key]:
-                    now = time.time()
-                    last_saved_at = float(st.session_state.get(saved_minutes_at_key, 0))
-                    if text != st.session_state.get(saved_minutes_key) and now - last_saved_at >= 10:
-                        try:
-                            save_minutes(board["id"], advisor_id, text)
-                            st.session_state[saved_minutes_key] = text
-                            st.session_state[initial_minutes_key] = text
-                            st.session_state[saved_minutes_at_key] = now
-                            clear_read_cache()
-                        except Exception as exc:
-                            st.warning(f"Não consegui salvar o rascunho da ata: {exc}")
-                last_minutes_autosave = st.session_state.get(saved_minutes_at_key)
-                if last_minutes_autosave:
-                    saved_time = local_time_from_timestamp(float(last_minutes_autosave)).strftime("%H:%M:%S")
-                    st.caption(f"Ata salva automaticamente às {saved_time}.")
+                st.caption("As alterações na ata só são gravadas ao clicar em Salvar ata.")
                 submitted = st.button("Salvar ata", key=f"save_minutes_{board['id']}")
                 if submitted:
                     try:
                         save_minutes(board["id"], advisor_id, text)
-                        final_grade = board_partial_grade(board["id"])
-                        final_average = final_grade["average_grade"] if final_grade and final_grade["average_grade"] is not None else None
-                        if final_average is not None and float(final_average) >= 7:
+                        final_average = partial_average
+                        final_result = calculate_plan_occupation_grade(
+                            board.get("plan_partial_1"),
+                            board.get("plan_partial_2"),
+                            final_average,
+                        ) if is_plan_occupation else final_average
+                        if final_result is not None and float(final_result) >= 7:
                             st.session_state["celebrate_minutes_saved"] = True
                         else:
                             st.session_state["minutes_saved"] = True
@@ -608,17 +629,31 @@ elif section == "Dashboard":
             width="stretch",
             hide_index=True,
         )
-        pivot_source = results.dropna(subset=["average_grade"]).copy()
-        if not pivot_source.empty:
-            pivot = pivot_source.pivot_table(index="student_name", columns="stage", values="average_grade", aggfunc="mean").reset_index()
-            if "Pré-Banca" not in pivot.columns:
-                pivot["Pré-Banca"] = 0
-            if "Banca Final" not in pivot.columns:
-                pivot["Banca Final"] = 0
-            pivot["Nota parcial TFG"] = (pivot["Pré-Banca"].fillna(0) * 0.3 + pivot["Banca Final"].fillna(0) * 0.7).round(2)
-            st.subheader("Consolidação TFG")
+        plan_source = results[(results["tfg_stage"] == "TFG I") & (results["stage"] == "Plano de Ocupação")].copy()
+        if not plan_source.empty:
+            plan_source["plan_partial_1"] = pd.to_numeric(plan_source["plan_partial_1"], errors="coerce")
+            plan_source["plan_partial_2"] = pd.to_numeric(plan_source["plan_partial_2"], errors="coerce")
+            plan_source["nota_plano_ocupacao"] = (
+                plan_source["plan_partial_1"].fillna(0) * 0.1
+                + plan_source["plan_partial_2"].fillna(0) * 0.2
+                + plan_source["average_grade"].fillna(0) * 0.7
+            ).round(2)
+            st.subheader("Consolidação Plano de Ocupação - TFG I")
+            consolidation = plan_source[[
+                "student_name",
+                "plan_partial_1",
+                "plan_partial_2",
+                "average_grade",
+                "nota_plano_ocupacao",
+            ]].rename(columns={
+                "student_name": "Aluno",
+                "plan_partial_1": "Parcial 1 (10%)",
+                "plan_partial_2": "Parcial 2 (20%)",
+                "average_grade": "Banca final (70%)",
+                "nota_plano_ocupacao": "Nota Plano de Ocupação",
+            })
             st.dataframe(
-                paginate_dataframe(pivot.rename(columns={"student_name": "Aluno"}), "board_tfg_consolidation"),
+                paginate_dataframe(consolidation, "board_tfg_consolidation"),
                 width="stretch",
                 hide_index=True,
             )
@@ -744,6 +779,34 @@ elif is_coord and section == "Gerenciar":
                 st.rerun()
             except Exception as exc:
                 st.error(str(exc))
+
+        st.divider()
+        st.subheader("Notas parciais - Plano de Ocupação")
+        tfg1_students = [item for item in students if item["tfg_stage"] == "TFG I"]
+        if not tfg1_students:
+            st.info("Nenhum aluno de TFG I encontrado para lançamento das parciais.")
+        else:
+            partial_options = {f"{item['name']} | {item['advisor_name']} | {item['year']}/{item['semester']}": item for item in tfg1_students}
+            selected_partial_label = st.selectbox("Aluno", list(partial_options.keys()), key="plan_partial_student")
+            selected_partial_student = partial_options[selected_partial_label]
+            with st.form("plan_partial_form"):
+                partial_1 = st.text_input(
+                    "Parcial 1 (peso 0,1)",
+                    value="" if selected_partial_student["plan_partial_1"] is None else str(selected_partial_student["plan_partial_1"]),
+                )
+                partial_2 = st.text_input(
+                    "Parcial 2 (peso 0,2)",
+                    value="" if selected_partial_student["plan_partial_2"] is None else str(selected_partial_student["plan_partial_2"]),
+                )
+                partial_submitted = st.form_submit_button("Salvar notas parciais")
+            if partial_submitted:
+                try:
+                    update_student_plan_partials(selected_partial_student["id"], partial_1, partial_2)
+                    clear_read_cache()
+                    st.success("Notas parciais salvas.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
 
     st.subheader("Bancas cadastradas")
     boards = cached_boards("coord", None)
