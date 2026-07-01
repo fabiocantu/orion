@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from xml.sax.saxutils import escape
 from pathlib import Path
 
 from reportlab.lib import colors
@@ -200,7 +201,7 @@ def generate_board_pdf(board_id: int) -> Path:
 
     story.append(Paragraph("<b>Ata da banca</b>", styles["Normal"]))
     minutes_text = minutes["minutes_text"] if minutes else "Ata ainda não registrada."
-    story.append(_table([[Paragraph(minutes_text, styles["SmallWrap"])]], [17 * cm]))
+    story.append(_table([[_paragraph_with_breaks(minutes_text, styles["SmallWrap"])]], [17 * cm]))
 
     doc.build(story)
     return path
@@ -244,7 +245,13 @@ def _table(data, col_widths, header: bool = False):
 
 
 def _p(text: str, style):
-    return Paragraph(text or "", style)
+    return Paragraph(escape(str(text or "")), style)
+
+
+def _paragraph_with_breaks(text: str, style):
+    lines = str(text or "").splitlines()
+    escaped = "<br/>".join(escape(line) for line in lines)
+    return Paragraph(escaped or "", style)
 
 
 def latest_pdf_for_record(record_id: int) -> Path | None:
