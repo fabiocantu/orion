@@ -58,6 +58,37 @@ def create_professor(name: str, email: str, password: str = "professor123") -> i
     return int(advisor_id)
 
 
+def update_professor(advisor_id: int, name: str, email: str) -> None:
+    name = clean_optional(name)
+    email = clean_optional(email)
+    if not name:
+        raise ValueError("Informe o nome do professor.")
+    if not email:
+        raise ValueError("Informe o e-mail ou login do professor.")
+    advisor = query_one("SELECT * FROM advisors WHERE id = ?", (advisor_id,))
+    if not advisor:
+        raise ValueError("Professor não encontrado.")
+    existing = query_one(
+        """
+        SELECT id
+        FROM users
+        WHERE lower(email) = lower(?) AND id <> ?
+        """,
+        (email, advisor["user_id"]),
+    )
+    if existing:
+        raise ValueError("Já existe outro usuário cadastrado com este e-mail/login.")
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE users SET name = ?, email = ? WHERE id = ?",
+            (name, email, advisor["user_id"]),
+        )
+        conn.execute(
+            "UPDATE advisors SET name = ?, email = ? WHERE id = ?",
+            (name, email, advisor_id),
+        )
+
+
 def create_student(
     name: str,
     email: str,

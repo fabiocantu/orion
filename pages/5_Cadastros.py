@@ -27,6 +27,7 @@ from src.utils import (
     list_students_without_orientation,
     rows_to_df,
     update_criterion,
+    update_professor,
     update_student_plan_partials,
     update_student_ra,
 )
@@ -117,6 +118,28 @@ if section == "Professores":
     advisors = cached_advisors()
     advisors_df = rows_to_df(advisors)
     st.dataframe(paginate_dataframe(advisors_df, "advisors"), width="stretch")
+
+    st.subheader("Atualizar professor ou convidado")
+    if advisors:
+        advisor_update_options = {f"{item['name']} ({item['email']})": item for item in advisors}
+        selected_update_label = st.selectbox(
+            "Professor/convidado para atualizar",
+            list(advisor_update_options.keys()),
+            key="update_professor_select",
+        )
+        selected_update = advisor_update_options[selected_update_label]
+        with st.form("update_professor_form"):
+            updated_name = st.text_input("Nome", value=selected_update["name"] or "")
+            updated_email = st.text_input("E-mail ou login", value=selected_update["email"] or "")
+            update_submitted = st.form_submit_button("Salvar alterações")
+        if update_submitted:
+            try:
+                update_professor(selected_update["id"], updated_name, updated_email)
+                clear_read_cache()
+                st.success("Professor atualizado.")
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
 
     st.subheader("Excluir professor ou convidado")
     if advisors:
